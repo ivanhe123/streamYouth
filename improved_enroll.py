@@ -51,7 +51,7 @@ def encrypt_id(plain_id: str) -> str:
 
 texts = {
     "English": {
-        "page_title": "Teacher Search and Enrollment",
+        "page_title": "PLE Youth Enrollment",
         "language_label": "Choose Language",
         "teacher_search_label": "Search for a teacher by name:",
         "teacher_not_found_error": "No teacher found with that search term.",
@@ -62,7 +62,7 @@ texts = {
         "cancel_button": "Cancel Enrollment",
         "enroll_success": "Thank you, {name}! You are now enrolled in {teacher}'s class!",
         "enrollment_cancelled": "Enrollment has been cancelled.",
-        "register_prompt": "Welcome! Please register by entering your name below:",
+        "register_prompt": "Welcome! Please register by entering the student's English Full name below:",
         "register_button": "Register",
         "logged_in": "Logged in as: {name}",
         "enrolled_label": "Enrolled Students",
@@ -71,7 +71,7 @@ texts = {
         "name_required": "Please enter your name to register."
     },
     "中文": {
-        "page_title": "教师搜索与注册",
+        "page_title": "PLE Youth 教师搜索与注册",
         "language_label": "选择语言",
         "teacher_search_label": "请输入教师姓名搜索：",
         "teacher_not_found_error": "没有匹配的教师。",
@@ -82,7 +82,7 @@ texts = {
         "cancel_button": "取消注册",
         "enroll_success": "谢谢, {name}! 你已注册到 {teacher} 的课程！",
         "enrollment_cancelled": "注册已取消。",
-        "register_prompt": "欢迎！请通过输入你的名字完成注册：",
+        "register_prompt": "欢迎！请通过输入学生的英文（或拼音）全名完成注册：",
         "register_button": "注册",
         "logged_in": "已登录: {name}",
         "enrolled_label": "已注册学生",
