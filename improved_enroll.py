@@ -78,16 +78,16 @@ texts = {
         "enter_teacher_info": "正在显示所有教师。使用上方搜索框筛选。",
         "teaches": "授课",
         "to_grade": "年级",
-        "enroll_button": "注册",
-        "cancel_button": "取消注册",
+        "enroll_button": "报名",
+        "cancel_button": "取消报名",
         "enroll_success": "谢谢, {name}! 你已注册到 {teacher} 的课程！",
-        "enrollment_cancelled": "注册已取消。",
+        "enrollment_cancelled": "报名已取消。",
         "register_prompt": "欢迎！请通过输入学生的英文（或拼音）全名完成注册：",
         "register_button": "注册",
         "logged_in": "已登录: {name}",
-        "enrolled_label": "已注册学生",
-        "no_enrollments": "当前没有注册学生。",
-        "not_enrolled": "未找到你的注册记录。",
+        "enrolled_label": "已报名的学生",
+        "no_enrollments": "当前没有报名的学生。",
+        "not_enrolled": "未找到你的报名记录。",
         "name_required": "请输入你的名字以注册。"
     }
 }
