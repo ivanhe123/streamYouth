@@ -5,7 +5,13 @@ import hmac
 import hashlib
 
 # --- File Database Helper Functions ---
-
+st.markdown("""
+<style>
+.st-emotion-cache-1p1m4ay{
+    visibility:hidden
+}
+</style>
+""",unsafe_allow_html=true)
 USER_DB_PATH = "user_db.json"
 ENROLLMENTS_DB_PATH = "enrollments.json"
 
