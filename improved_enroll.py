@@ -11,7 +11,7 @@ st.markdown("""
     visibility:hidden
 }
 </style>
-""",unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 USER_DB_PATH = "user_db.json"
 ENROLLMENTS_DB_PATH = "enrollments.json"
 
@@ -48,7 +48,6 @@ def encrypt_id(plain_id: str) -> str:
     return hmac.new(SECRET_KEY.encode(), plain_id.encode(), hashlib.sha256).hexdigest()
 
 # --- Bilingual Texts and Sample Teacher Data ---
-
 texts = {
     "English": {
         "page_title": "PLE Youth Enrollment",
@@ -129,6 +128,8 @@ secure_id = encrypt_id(plain_id)
 # --- Sidebar Language Selector ---
 selected_language = st.sidebar.selectbox("Language / 语言", options=["English", "中文"])
 lang = texts[selected_language]
+
+# --- Update Tab Title Based on Language Selection ---
 st.markdown(f"""
     <script>
         document.title = "{lang['page_title']}";
