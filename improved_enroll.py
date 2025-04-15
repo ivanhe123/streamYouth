@@ -63,7 +63,7 @@ def admin_route():
     students_df = pd.DataFrame(
         [{"ID": id, "Name": name} for id, name in user_database.items()]
     )
-    edited_students = st.experimental_data_editor(students_df, num_rows="dynamic")
+    edited_students = st.data_editor(students_df, num_rows="dynamic")
     if st.button("Save Changes to Students"):
         # Update user_database based on edits
         user_database.clear()
@@ -80,7 +80,7 @@ def admin_route():
         for student in students
     ]
     assignments_df = pd.DataFrame(assignments)
-    edited_assignments = st.experimental_data_editor(assignments_df, num_rows="dynamic")
+    edited_assignments = st.data_editor(assignments_df, num_rows="dynamic")
     if st.button("Save Changes to Assignments"):
         # Update enrollments based on edits
         enrollments.clear()
