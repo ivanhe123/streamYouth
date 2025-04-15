@@ -58,14 +58,19 @@ def admin_route():
 
     st.success("Access granted. Welcome, Admin!")
 
+    # **Refresh Button**
+    if st.button("Refresh Page"):
+        st.rerun()  # Triggers Streamlit to reload while keeping session active
+
     # View and edit all students
     st.subheader("All Registered Students")
-    students_df = pd.DataFrame(
-        [{"ID": id, "Name": name} for id, name in user_database.items()]
-    )
+    students_df = pd.DataFrame.from_dict(user_database, orient="index", columns=["Name"]).reset_index()
+    students_df.rename(columns={"index": "ID"}, inplace=True)
+    if students_df.empty:
+        students_df = pd.DataFrame(columns=["ID", "Name"])
+
     edited_students = st.data_editor(students_df, num_rows="dynamic")
     if st.button("Save Changes to Students"):
-        # Update user_database based on edits
         user_database.clear()
         for _, row in edited_students.iterrows():
             user_database[row["ID"]] = row["Name"]
@@ -75,18 +80,16 @@ def admin_route():
     # View and edit teacher-student assignments
     st.subheader("Teacher-Student Assignments")
     assignments = [
-    {"Teacher": teacher, "Student": student}
-    for teacher, students in enrollments.items()
-    for student in students
+        {"Teacher": teacher, "Student": student}
+        for teacher, students in enrollments.items()
+        for student in students
     ]
     assignments_df = pd.DataFrame(assignments)
-    
-    # Ensure DataFrame is never completely empty
     if assignments_df.empty:
         assignments_df = pd.DataFrame(columns=["Teacher", "Student"])
+
     edited_assignments = st.data_editor(assignments_df, num_rows="dynamic")
     if st.button("Save Changes to Assignments"):
-        # Update enrollments based on edits
         enrollments.clear()
         for _, row in edited_assignments.iterrows():
             teacher = row["Teacher"]
