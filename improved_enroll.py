@@ -46,6 +46,60 @@ def encrypt_id(plain_id: str) -> str:
     so that the actual id remains secret.
     """
     return hmac.new(SECRET_KEY.encode(), plain_id.encode(), hashlib.sha256).hexdigest()
+def admin_route():
+    st.title("Admin Dashboard")
+
+    # Password prompt
+    admin_password = st.text_input("Enter Admin Password:", type="password")
+    if admin_password != st.secrets["passcode"]:
+        st.error("Incorrect password. Access denied.")
+        st.stop()
+
+    st.success("Access granted. Welcome, Admin!")
+
+    # View and edit all students
+    st.subheader("All Registered Students")
+    students_df = pd.DataFrame(
+        [{"ID": id, "Name": name} for id, name in user_database.items()]
+    )
+    edited_students = st.experimental_data_editor(students_df, num_rows="dynamic")
+    if st.button("Save Changes to Students"):
+        # Update user_database based on edits
+        user_database.clear()
+        for _, row in edited_students.iterrows():
+            user_database[row["ID"]] = row["Name"]
+        save_data(USER_DB_PATH, user_database)
+        st.success("Student data updated successfully!")
+
+    # View and edit teacher-student assignments
+    st.subheader("Teacher-Student Assignments")
+    assignments = [
+        {"Teacher": teacher, "Student": student}
+        for teacher, students in enrollments.items()
+        for student in students
+    ]
+    assignments_df = pd.DataFrame(assignments)
+    edited_assignments = st.experimental_data_editor(assignments_df, num_rows="dynamic")
+    if st.button("Save Changes to Assignments"):
+        # Update enrollments based on edits
+        enrollments.clear()
+        for _, row in edited_assignments.iterrows():
+            teacher = row["Teacher"]
+            student = row["Student"]
+            if teacher not in enrollments:
+                enrollments[teacher] = []
+            enrollments[teacher].append(student)
+        save_data(ENROLLMENTS_DB_PATH, enrollments)
+        st.success("Assignments updated successfully!")
+
+    # Export data to Excel
+    st.subheader("Export Data")
+    if st.button("Export Students to Excel"):
+        students_df.to_excel("students.xlsx", index=False)
+        st.success("Students exported to students.xlsx!")
+    if st.button("Export Assignments to Excel"):
+        assignments_df.to_excel("assignments.xlsx", index=False)
+        st.success("Assignments exported to assignments.xlsx!")
 
 # --- Bilingual Texts and Sample Teacher Data ---
 texts = {
@@ -121,107 +175,109 @@ if isinstance(plain_id, list):
 if not plain_id:
     st.error("No user id provided in URL. Please use ?id=your_id")
     st.stop()
-
-# Convert the provided id into a secure token using encryption.
-secure_id = encrypt_id(plain_id)
-
-# --- Sidebar Language Selector ---
-selected_language = st.sidebar.selectbox("Language / 语言", options=["English", "中文"])
-lang = texts[selected_language]
-
-# --- Update Tab Title Based on Language Selection ---
-st.markdown(f"""
-    <script>
-        document.title = "{lang['page_title']}";
-    </script>
-    """, unsafe_allow_html=True)
-
-# --- Registration Check ---
-if secure_id not in user_database:
-    st.title(lang["page_title"])
-    st.write(lang["register_prompt"])
-    new_user_name = st.text_input(lang["name_required"], key="register_input")
-    if st.button(lang["register_button"]):
-        if new_user_name:
-            # Register user: record the secure id (not the plain one) mapped to the entered name.
-            user_database[secure_id] = new_user_name
-            save_data(USER_DB_PATH, user_database)
-            st.rerun()  # Reload the app so the user is now "logged in."
-        else:
-            st.error(lang["name_required"])
-    st.stop()
-
-# User is registered: get the registered user name.
-user_name = user_database[secure_id]
-st.sidebar.write(lang["logged_in"].format(name=user_name))
-
-# --- Main Application: Teacher Search and Enrollment ---
-st.title(lang["page_title"])
-
-# Teacher filter input.
-teacher_filter = st.text_input(lang["teacher_search_label"], key="teacher_filter")
-
-# Filter the teachers (case-insensitive).
-filtered_teachers = {
-    name: info for name, info in teachers.items()
-    if teacher_filter.lower() in name.lower()
-}
-
-if teacher_filter.strip() == "":
-    st.info(lang["enter_teacher_info"])
-
-if not filtered_teachers:
-    st.error(lang["teacher_not_found_error"])
+if plain_id == "admin":
+    admin_route()
 else:
-    for teacher_name, teacher_info in filtered_teachers.items():
-        st.header(teacher_name)
-
-        # Initialize enrollment list for teacher if necessary.
-        if teacher_name not in enrollments:
-            enrollments[teacher_name] = []
-            save_data(ENROLLMENTS_DB_PATH, enrollments)
-        
-        # Display teacher description.
-        if selected_language == "English":
-            description = (
-                f"{lang['teaches']} **{teacher_info['subject_en']}** "
-                f"{lang['to_grade']} **{teacher_info['grade']}**."
-            )
-        else:
-            description = (
-                f"{lang['teaches']} **{teacher_info['subject_zh']}**，"
-                f"{lang['to_grade']} **{teacher_info['grade']}**."
-            )
-        st.write(description)
-
-        # Enrollment actions: Use two columns for buttons.
-        col1, col2 = st.columns(2)
-        with col1:
-            enroll_clicked = st.button(lang["enroll_button"], key=f"enroll_button_{teacher_name}")
-        with col2:
-            cancel_clicked = st.button(lang["cancel_button"], key=f"cancel_button_{teacher_name}")
-
-        # Process enrollment.
-        if enroll_clicked:
-            if user_name not in enrollments[teacher_name]:
-                enrollments[teacher_name].append(user_name)
-                save_data(ENROLLMENTS_DB_PATH, enrollments)
-            st.success(lang["enroll_success"].format(name=user_name, teacher=teacher_name))
-
-        # Process cancellation.
-        if cancel_clicked:
-            if user_name in enrollments[teacher_name]:
-                enrollments[teacher_name].remove(user_name)
-                save_data(ENROLLMENTS_DB_PATH, enrollments)
-                st.info(lang["enrollment_cancelled"])
+    # Convert the provided id into a secure token using encryption.
+    secure_id = encrypt_id(plain_id)
+    
+    # --- Sidebar Language Selector ---
+    selected_language = st.sidebar.selectbox("Language / 语言", options=["English", "中文"])
+    lang = texts[selected_language]
+    
+    # --- Update Tab Title Based on Language Selection ---
+    st.markdown(f"""
+        <script>
+            document.title = "{lang['page_title']}";
+        </script>
+        """, unsafe_allow_html=True)
+    
+    # --- Registration Check ---
+    if secure_id not in user_database:
+        st.title(lang["page_title"])
+        st.write(lang["register_prompt"])
+        new_user_name = st.text_input(lang["name_required"], key="register_input")
+        if st.button(lang["register_button"]):
+            if new_user_name:
+                # Register user: record the secure id (not the plain one) mapped to the entered name.
+                user_database[secure_id] = new_user_name
+                save_data(USER_DB_PATH, user_database)
+                st.rerun()  # Reload the app so the user is now "logged in."
             else:
-                st.error(lang["not_enrolled"])
-
-        # Display enrolled students using an expander.
-        with st.expander(lang["enrolled_label"]):
-            if enrollments[teacher_name]:
-                for s in enrollments[teacher_name]:
-                    st.write(f"- {s}")
+                st.error(lang["name_required"])
+        st.stop()
+    
+    # User is registered: get the registered user name.
+    user_name = user_database[secure_id]
+    st.sidebar.write(lang["logged_in"].format(name=user_name))
+    
+    # --- Main Application: Teacher Search and Enrollment ---
+    st.title(lang["page_title"])
+    
+    # Teacher filter input.
+    teacher_filter = st.text_input(lang["teacher_search_label"], key="teacher_filter")
+    
+    # Filter the teachers (case-insensitive).
+    filtered_teachers = {
+        name: info for name, info in teachers.items()
+        if teacher_filter.lower() in name.lower()
+    }
+    
+    if teacher_filter.strip() == "":
+        st.info(lang["enter_teacher_info"])
+    
+    if not filtered_teachers:
+        st.error(lang["teacher_not_found_error"])
+    else:
+        for teacher_name, teacher_info in filtered_teachers.items():
+            st.header(teacher_name)
+    
+            # Initialize enrollment list for teacher if necessary.
+            if teacher_name not in enrollments:
+                enrollments[teacher_name] = []
+                save_data(ENROLLMENTS_DB_PATH, enrollments)
+            
+            # Display teacher description.
+            if selected_language == "English":
+                description = (
+                    f"{lang['teaches']} **{teacher_info['subject_en']}** "
+                    f"{lang['to_grade']} **{teacher_info['grade']}**."
+                )
             else:
-                st.write(lang["no_enrollments"])
-        st.markdown("---")
+                description = (
+                    f"{lang['teaches']} **{teacher_info['subject_zh']}**，"
+                    f"{lang['to_grade']} **{teacher_info['grade']}**."
+                )
+            st.write(description)
+    
+            # Enrollment actions: Use two columns for buttons.
+            col1, col2 = st.columns(2)
+            with col1:
+                enroll_clicked = st.button(lang["enroll_button"], key=f"enroll_button_{teacher_name}")
+            with col2:
+                cancel_clicked = st.button(lang["cancel_button"], key=f"cancel_button_{teacher_name}")
+    
+            # Process enrollment.
+            if enroll_clicked:
+                if user_name not in enrollments[teacher_name]:
+                    enrollments[teacher_name].append(user_name)
+                    save_data(ENROLLMENTS_DB_PATH, enrollments)
+                st.success(lang["enroll_success"].format(name=user_name, teacher=teacher_name))
+    
+            # Process cancellation.
+            if cancel_clicked:
+                if user_name in enrollments[teacher_name]:
+                    enrollments[teacher_name].remove(user_name)
+                    save_data(ENROLLMENTS_DB_PATH, enrollments)
+                    st.info(lang["enrollment_cancelled"])
+                else:
+                    st.error(lang["not_enrolled"])
+    
+            # Display enrolled students using an expander.
+            with st.expander(lang["enrolled_label"]):
+                if enrollments[teacher_name]:
+                    for s in enrollments[teacher_name]:
+                        st.write(f"- {s}")
+                else:
+                    st.write(lang["no_enrollments"])
+            st.markdown("---")
