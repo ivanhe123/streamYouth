@@ -15,6 +15,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 USER_DB_PATH = "user_db.json"
 ENROLLMENTS_DB_PATH = "enrollments.json"
+TEACHER_DB_PATH = "teacher_db.json"
 
 def load_data(path):
     if os.path.exists(path):
@@ -32,6 +33,7 @@ def save_data(path, data):
 # Load file databases.
 user_database = load_data(USER_DB_PATH)
 enrollments = load_data(ENROLLMENTS_DB_PATH)
+teacher_database = load_data(TEACHER_DB_PATH)
 
 # --- Encryption (Deterministic) via HMAC-SHA256 ---
 # Make sure to set a strong secret key in your Streamlit secrets.
