@@ -226,7 +226,7 @@ if not plain_id:
     st.stop()
 if plain_id == "admin":
     admin_route()
-elif role == "teacher":
+elif plain_id == "teacher":
         teacher_panel()
         st.stop()
 else:
