@@ -240,6 +240,11 @@ params = st.query_params
 plain_id = params.get("id", "")
 if isinstance(plain_id, list):
     plain_id = plain_id[0]  # In case it's provided as a list
+secure_id = encrypt_id(plain_id)
+    
+# --- Sidebar textsuage Selector ---
+selected_textsuage = st.sidebar.selectbox("textsuage / 语言", options=["English", "中文"])
+texts = texts[selected_textsuage]
 
 if not plain_id:
     st.error("No user id provided in URL. Please use ?id=your_id")
@@ -251,11 +256,7 @@ elif plain_id == "teacher":
         st.stop()
 else:
     # Convert the provided id into a secure token using encryption.
-    secure_id = encrypt_id(plain_id)
     
-    # --- Sidebar textsuage Selector ---
-    selected_textsuage = st.sidebar.selectbox("textsuage / 语言", options=["English", "中文"])
-    texts = texts[selected_textsuage]
     
     # --- Update Tab Title Based on textsuage Selection ---
     st.markdown(f"""
