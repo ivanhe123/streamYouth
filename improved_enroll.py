@@ -75,11 +75,15 @@ def admin_route():
     # View and edit teacher-student assignments
     st.subheader("Teacher-Student Assignments")
     assignments = [
-        {"Teacher": teacher, "Student": student}
-        for teacher, students in enrollments.items()
-        for student in students
+    {"Teacher": teacher, "Student": student}
+    for teacher, students in enrollments.items()
+    for student in students
     ]
     assignments_df = pd.DataFrame(assignments)
+    
+    # Ensure DataFrame is never completely empty
+    if assignments_df.empty:
+        assignments_df = pd.DataFrame(columns=["Teacher", "Student"])
     edited_assignments = st.data_editor(assignments_df, num_rows="dynamic")
     if st.button("Save Changes to Assignments"):
         # Update enrollments based on edits
