@@ -11,7 +11,7 @@ st.markdown("""
     visibility:hidden
 }
 </style>
-""",unsafe_allow_html=true)
+""",unsafe_allow_html=True)
 USER_DB_PATH = "user_db.json"
 ENROLLMENTS_DB_PATH = "enrollments.json"
 
