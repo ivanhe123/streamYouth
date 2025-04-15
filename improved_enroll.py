@@ -129,6 +129,11 @@ secure_id = encrypt_id(plain_id)
 # --- Sidebar Language Selector ---
 selected_language = st.sidebar.selectbox("Language / 语言", options=["English", "中文"])
 lang = texts[selected_language]
+st.markdown(f"""
+    <script>
+        document.title = "{lang['page_title']}";
+    </script>
+    """, unsafe_allow_html=True)
 
 # --- Registration Check ---
 if secure_id not in user_database:
