@@ -3,6 +3,7 @@ import json
 import os
 import hmac
 import hashlib
+import pandas as pd
 
 # --- File Database Helper Functions ---
 st.markdown("""
