@@ -100,6 +100,67 @@ def admin_route():
         save_data(ENROLLMENTS_DB_PATH, enrollments)
         st.success("Assignments updated successfully!")
 
+def teacher_panel():
+    st.title(lang["teacher_panel_title"])
+    global teacher_database
+    teacher_record = teacher_database.get(user_name, None)
+    if teacher_record is None:
+        st.write(lang["no_teacher_record"])
+        subject_en = st.text_input(lang["subject_en"])
+        subject_zh = st.text_input(lang["subject_zh"])
+        grade_val = st.text_input(lang["grade"])
+        enrollment_cap = st.number_input(lang["enrollment_cap"], min_value=1, value=30)
+        if st.button(lang["create_teacher_record"]):
+            teacher_database[user_name] = {
+                "subject_en": subject_en,
+                "subject_zh": subject_zh,
+                "grade": grade_val,
+                "enrollment_cap": int(enrollment_cap),
+                "teaching_confirmed": False
+            }
+            save_data(TEACHER_DB_PATH, teacher_database)
+            st.success("Teacher record created!")
+            st.rerun()
+    else:
+        st.subheader(lang["edit_teacher_record"])
+        subject_en = st.text_input(lang["subject_en"], value=teacher_record.get("subject_en", ""))
+        subject_zh = st.text_input(lang["subject_zh"], value=teacher_record.get("subject_zh", ""))
+        grade_val = st.text_input(lang["grade"], value=teacher_record.get("grade", ""))
+        enrollment_cap = st.number_input(lang["enrollment_cap"], min_value=1, value=teacher_record.get("enrollment_cap", 30))
+        
+        # Two action buttons: confirm or cancel teaching.
+        if st.button(lang["confirm_teaching"]):
+            teacher_record["teaching_confirmed"] = True
+            teacher_record["subject_en"] = subject_en
+            teacher_record["subject_zh"] = subject_zh
+            teacher_record["grade"] = grade_val
+            teacher_record["enrollment_cap"] = int(enrollment_cap)
+            teacher_database[user_name] = teacher_record
+            save_data(TEACHER_DB_PATH, teacher_database)
+            st.success("Teaching confirmed!")
+            st.rerun()
+        if st.button(lang["cancel_teaching"]):
+            teacher_record["teaching_confirmed"] = False
+            teacher_database[user_name] = teacher_record
+            save_data(TEACHER_DB_PATH, teacher_database)
+            st.success("Teaching canceled!")
+            st.rerun()
+        st.write("Current teacher record:")
+        st.json(teacher_record)
+
+# --- Registration Check (common for both roles) ---
+if secure_id not in user_database:
+    st.title(lang["page_title"])
+    st.write(lang["register_prompt"])
+    new_user_name = st.text_input(lang["name_required"], key="register_input")
+    if st.button(lang["register_button"]):
+        if new_user_name:
+            user_database[secure_id] = new_user_name
+            save_data(USER_DB_PATH, user_database)
+            st.rerun()
+        else:
+            st.error(lang["name_required"])
+    st.stop()
 # --- Bilingual Texts and Sample Teacher Data ---
 texts = {
     "English": {
@@ -176,6 +237,9 @@ if not plain_id:
     st.stop()
 if plain_id == "admin":
     admin_route()
+else if role == "teacher":
+        teacher_panel()
+        st.stop()
 else:
     # Convert the provided id into a secure token using encryption.
     secure_id = encrypt_id(plain_id)
@@ -229,57 +293,58 @@ else:
         st.error(lang["teacher_not_found_error"])
     else:
         for teacher_name, teacher_info in filtered_teachers.items():
-            st.header(teacher_name)
-    
-            # Initialize enrollment list for teacher if necessary.
-            if teacher_name not in enrollments:
-                enrollments[teacher_name] = []
-                save_data(ENROLLMENTS_DB_PATH, enrollments)
-            
-            # Display teacher description.
-            if selected_language == "English":
-                description = (
-                    f"{lang['teaches']} **{teacher_info['subject_en']}** "
-                    f"{lang['to_grade']} **{teacher_info['grade']}**."
-                )
-            else:
-                description = (
-                    f"{lang['teaches']} **{teacher_info['subject_zh']}**，"
-                    f"{lang['to_grade']} **{teacher_info['grade']}**."
-                )
-            st.write(description)
-    
-            # Enrollment actions: Use two columns for buttons.
-            col1, col2 = st.columns(2)
-            with col1:
-                enroll_clicked = st.button(lang["enroll_button"], key=f"enroll_button_{teacher_name}")
-            with col2:
-                cancel_clicked = st.button(lang["cancel_button"], key=f"cancel_button_{teacher_name}")
-
-            if enroll_clicked:
+        st.header(teacher_name)
+        
+        # Initialize enrollment list if not present.
+        if teacher_name not in enrollments:
+            enrollments[teacher_name] = []
+            save_data(ENROLLMENTS_DB_PATH, enrollments)
+        
+        # Display teacher description.
+        if selected_language == "English":
+            desc = f"{lang['teaches']} **{teacher_info['subject_en']}** {lang['to_grade']} **{teacher_info['grade']}**."
+        else:
+            desc = f"{lang['teaches']} **{teacher_info['subject_zh']}**， {lang['to_grade']} **{teacher_info['grade']}**."
+        st.write(desc)
+        
+        # Show the current enrollment vs. the teacher's enrollment cap.
+        current_enrollment = len(enrollments[teacher_name])
+        cap = teacher_info.get("enrollment_cap", 9999)
+        st.write(f"Enrolled: {current_enrollment}/{cap}")
+        
+        # Enrollment actions.
+        col1, col2 = st.columns(2)
+        with col1:
+            enroll_clicked = st.button(lang["enroll_button"], key=f"enroll_button_{teacher_name}")
+        with col2:
+            cancel_clicked = st.button(lang["cancel_button"], key=f"cancel_button_{teacher_name}")
+        
+        # Process enrollment.
+        if enroll_clicked:
+            if current_enrollment < cap:
                 if user_name not in enrollments[teacher_name]:
                     enrollments[teacher_name].append(user_name)
                     save_data(ENROLLMENTS_DB_PATH, enrollments)
-                    st.success(lang["enroll_success"].format(name=user_name, teacher=teacher_name))
-                    
-                else:
-                    st.info("Already enrolled.")
-
-            # Process cancellation.
-            if cancel_clicked:
-                if user_name in enrollments[teacher_name]:
-                    enrollments[teacher_name].remove(user_name)
-                    save_data(ENROLLMENTS_DB_PATH, enrollments)
-                    st.info(lang["enrollment_cancelled"])
-                    
-                else:
-                    st.error(lang["not_enrolled"])
-    
-            # Display enrolled students using an expander.
-            with st.expander(lang["enrolled_label"]):
-                if enrollments[teacher_name]:
-                    for s in enrollments[teacher_name]:
-                        st.write(f"- {s}")
-                else:
-                    st.write(lang["no_enrollments"])
-            st.markdown("---")
+                st.success(lang["enroll_success"].format(name=user_name, teacher=teacher_name))
+                st.rerun()
+            else:
+                st.error("Enrollment cap reached for this teacher.")
+        
+        # Process cancellation.
+        if cancel_clicked:
+            if user_name in enrollments[teacher_name]:
+                enrollments[teacher_name].remove(user_name)
+                save_data(ENROLLMENTS_DB_PATH, enrollments)
+                st.info(lang["enrollment_cancelled"])
+                st.rerun()
+            else:
+                st.error(lang["not_enrolled"])
+        
+        # Show enrolled students.
+        with st.expander(lang["enrolled_label"]):
+            if enrollments[teacher_name]:
+                for s in enrollments[teacher_name]:
+                    st.write(f"- {s}")
+            else:
+                st.write(lang["no_enrollments"])
+        st.markdown("---")
