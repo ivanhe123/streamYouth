@@ -252,16 +252,6 @@ else:
                 enroll_clicked = st.button(lang["enroll_button"], key=f"enroll_button_{teacher_name}")
             with col2:
                 cancel_clicked = st.button(lang["cancel_button"], key=f"cancel_button_{teacher_name}")
-    
-            # Process enrollment.
-            if enroll_clicked:
-            if user_name not in enrollments[teacher_name]:
-                enrollments[teacher_name].append(user_name)
-                save_data(ENROLLMENTS_DB_PATH, enrollments)
-                st.success(lang["enroll_success"].format(name=user_name, teacher=teacher_name))
-                st.rerun()  # Refresh the page so the assignments update immediately.
-            else:
-                st.info("Already enrolled.")
 
             if enroll_clicked:
                 if user_name not in enrollments[teacher_name]:
