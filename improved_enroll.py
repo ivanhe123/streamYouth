@@ -164,13 +164,24 @@ texts = {
         "cancel_button": "Cancel Enrollment",
         "enroll_success": "Thank you, {name}! You are now enrolled in {teacher}'s class!",
         "enrollment_cancelled": "Enrollment has been cancelled.",
-        "register_prompt": "Welcome! Please register by entering the student's English Full name below:",
+        "register_prompt": "Welcome! Please register by entering your full name below:",
         "register_button": "Register",
         "logged_in": "Logged in as: {name}",
         "enrolled_label": "Enrolled Students",
         "no_enrollments": "No students enrolled yet.",
         "not_enrolled": "Your name was not found in the enrollment.",
-        "name_required": "Please enter your name to register."
+        "name_required": "Please enter your name to register.",
+        # Teacher Panel texts:
+        "teacher_panel_title": "Teacher Panel",
+        "no_teacher_record": "You don't have a teacher record. Create one below:",
+        "create_teacher_record": "Create Teacher Record",
+        "edit_teacher_record": "Edit Your Teaching Details",
+        "subject_en": "Class (English)",
+        "subject_zh": "Class (中文)",
+        "grade": "Grade",
+        "enrollment_cap": "Enrollment Cap",
+        "confirm_teaching": "Confirm Teaching",
+        "cancel_teaching": "Cancel Teaching"
     },
     "中文": {
         "page_title": "PLE Youth 教师搜索与注册",
@@ -184,13 +195,24 @@ texts = {
         "cancel_button": "取消报名",
         "enroll_success": "谢谢, {name}! 你已注册到 {teacher} 的课程！",
         "enrollment_cancelled": "报名已取消。",
-        "register_prompt": "欢迎！请通过输入学生的英文（或拼音）全名完成注册：",
+        "register_prompt": "欢迎！请通过输入你的全名完成注册：",
         "register_button": "注册",
         "logged_in": "已登录: {name}",
         "enrolled_label": "已报名的学生",
         "no_enrollments": "当前没有报名的学生。",
         "not_enrolled": "未找到你的报名记录。",
-        "name_required": "请输入你的名字以注册。"
+        "name_required": "请输入你的名字以注册。",
+        # Teacher Panel texts:
+        "teacher_panel_title": "教师面板",
+        "no_teacher_record": "你还没有教师记录。请在下面创建：",
+        "create_teacher_record": "创建教师记录",
+        "edit_teacher_record": "编辑你的教学信息",
+        "subject_en": "课程名（英文）",
+        "subject_zh": "课程名（中文）",
+        "grade": "年级",
+        "enrollment_cap": "报名人数上限",
+        "confirm_teaching": "确认教学",
+        "cancel_teaching": "取消教学"
     }
 }
 
