@@ -31,7 +31,7 @@ enrollments = load_data(ENROLLMENTS_DB_PATH)
 # Example in .streamlit/secrets.toml:
 # [general]
 # secret_key = "YOUR_STRONG_SECRET_KEY"
-SECRET_KEY = st.secrets.get("secret_key", "default_secret_key")
+SECRET_KEY = st.secrets["secret_key"]
 
 def encrypt_id(plain_id: str) -> str:
     """
