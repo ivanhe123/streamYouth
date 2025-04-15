@@ -92,15 +92,6 @@ def admin_route():
         save_data(ENROLLMENTS_DB_PATH, enrollments)
         st.success("Assignments updated successfully!")
 
-    # Export data to Excel
-    st.subheader("Export Data")
-    if st.button("Export Students to Excel"):
-        students_df.to_excel("students.xlsx", index=False)
-        st.success("Students exported to students.xlsx!")
-    if st.button("Export Assignments to Excel"):
-        assignments_df.to_excel("assignments.xlsx", index=False)
-        st.success("Assignments exported to assignments.xlsx!")
-
 # --- Bilingual Texts and Sample Teacher Data ---
 texts = {
     "English": {
