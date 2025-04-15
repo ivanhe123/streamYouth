@@ -140,7 +140,7 @@ if secure_id not in user_database:
             # Register user: record the secure id (not the plain one) mapped to the entered name.
             user_database[secure_id] = new_user_name
             save_data(USER_DB_PATH, user_database)
-            st.experimental_rerun()  # Reload the app so the user is now "logged in."
+            st.rerun()  # Reload the app so the user is now "logged in."
         else:
             st.error(lang["name_required"])
     st.stop()
