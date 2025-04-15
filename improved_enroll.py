@@ -255,17 +255,30 @@ else:
     
             # Process enrollment.
             if enroll_clicked:
+            if user_name not in enrollments[teacher_name]:
+                enrollments[teacher_name].append(user_name)
+                save_data(ENROLLMENTS_DB_PATH, enrollments)
+                st.success(lang["enroll_success"].format(name=user_name, teacher=teacher_name))
+                st.rerun()  # Refresh the page so the assignments update immediately.
+            else:
+                st.info("Already enrolled.")
+
+            if enroll_clicked:
                 if user_name not in enrollments[teacher_name]:
                     enrollments[teacher_name].append(user_name)
                     save_data(ENROLLMENTS_DB_PATH, enrollments)
-                st.success(lang["enroll_success"].format(name=user_name, teacher=teacher_name))
-    
+                    st.success(lang["enroll_success"].format(name=user_name, teacher=teacher_name))
+                    st.rerun()  # Refresh the page so the assignments update immediately.
+                else:
+                    st.info("Already enrolled.")
+
             # Process cancellation.
             if cancel_clicked:
                 if user_name in enrollments[teacher_name]:
                     enrollments[teacher_name].remove(user_name)
                     save_data(ENROLLMENTS_DB_PATH, enrollments)
                     st.info(lang["enrollment_cancelled"])
+                    st.rerun()  # Refresh the page so the assignments update immediately.
                 else:
                     st.error(lang["not_enrolled"])
     
