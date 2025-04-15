@@ -358,7 +358,7 @@ if plain_id.lower() == "admin": # Make admin check case-insensitive
 else:
     # --- Regular User Flow ---
     # Convert the provided id into a secure token using encryption.
-    secure_id = encrypt_id(plain_id)
+    secure_id = plain_id
 
     # --- Sidebar Language Selector ---
     selected_language = st.sidebar.selectbox("Language / 语言", options=["English", "中文"], key="lang_select")
