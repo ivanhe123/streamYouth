@@ -258,7 +258,7 @@ else:
                     enrollments[teacher_name].append(user_name)
                     save_data(ENROLLMENTS_DB_PATH, enrollments)
                     st.success(lang["enroll_success"].format(name=user_name, teacher=teacher_name))
-                    st.rerun()  # Refresh the page so the assignments update immediately.
+                    
                 else:
                     st.info("Already enrolled.")
 
@@ -268,7 +268,7 @@ else:
                     enrollments[teacher_name].remove(user_name)
                     save_data(ENROLLMENTS_DB_PATH, enrollments)
                     st.info(lang["enrollment_cancelled"])
-                    st.rerun()  # Refresh the page so the assignments update immediately.
+                    
                 else:
                     st.error(lang["not_enrolled"])
     
