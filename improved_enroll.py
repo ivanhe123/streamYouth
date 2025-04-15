@@ -148,19 +148,8 @@ def teacher_panel():
         st.write("Current teacher record:")
         st.json(teacher_record)
 
-# --- Registration Check (common for both roles) ---
-if secure_id not in user_database:
-    st.title(lang["page_title"])
-    st.write(lang["register_prompt"])
-    new_user_name = st.text_input(lang["name_required"], key="register_input")
-    if st.button(lang["register_button"]):
-        if new_user_name:
-            user_database[secure_id] = new_user_name
-            save_data(USER_DB_PATH, user_database)
-            st.rerun()
-        else:
-            st.error(lang["name_required"])
-    st.stop()
+
+
 # --- Bilingual Texts and Sample Teacher Data ---
 texts = {
     "English": {
@@ -262,10 +251,9 @@ else:
         new_user_name = st.text_input(lang["name_required"], key="register_input")
         if st.button(lang["register_button"]):
             if new_user_name:
-                # Register user: record the secure id (not the plain one) mapped to the entered name.
                 user_database[secure_id] = new_user_name
                 save_data(USER_DB_PATH, user_database)
-                st.rerun()  # Reload the app so the user is now "logged in."
+                st.rerun()
             else:
                 st.error(lang["name_required"])
         st.stop()
