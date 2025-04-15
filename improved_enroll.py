@@ -293,58 +293,58 @@ else:
         st.error(lang["teacher_not_found_error"])
     else:
         for teacher_name, teacher_info in filtered_teachers.items():
-        st.header(teacher_name)
-        
-        # Initialize enrollment list if not present.
-        if teacher_name not in enrollments:
-            enrollments[teacher_name] = []
-            save_data(ENROLLMENTS_DB_PATH, enrollments)
-        
-        # Display teacher description.
-        if selected_language == "English":
-            desc = f"{lang['teaches']} **{teacher_info['subject_en']}** {lang['to_grade']} **{teacher_info['grade']}**."
-        else:
-            desc = f"{lang['teaches']} **{teacher_info['subject_zh']}**， {lang['to_grade']} **{teacher_info['grade']}**."
-        st.write(desc)
-        
-        # Show the current enrollment vs. the teacher's enrollment cap.
-        current_enrollment = len(enrollments[teacher_name])
-        cap = teacher_info.get("enrollment_cap", 9999)
-        st.write(f"Enrolled: {current_enrollment}/{cap}")
-        
-        # Enrollment actions.
-        col1, col2 = st.columns(2)
-        with col1:
-            enroll_clicked = st.button(lang["enroll_button"], key=f"enroll_button_{teacher_name}")
-        with col2:
-            cancel_clicked = st.button(lang["cancel_button"], key=f"cancel_button_{teacher_name}")
-        
-        # Process enrollment.
-        if enroll_clicked:
-            if current_enrollment < cap:
-                if user_name not in enrollments[teacher_name]:
-                    enrollments[teacher_name].append(user_name)
-                    save_data(ENROLLMENTS_DB_PATH, enrollments)
-                st.success(lang["enroll_success"].format(name=user_name, teacher=teacher_name))
-                st.rerun()
-            else:
-                st.error("Enrollment cap reached for this teacher.")
-        
-        # Process cancellation.
-        if cancel_clicked:
-            if user_name in enrollments[teacher_name]:
-                enrollments[teacher_name].remove(user_name)
+            st.header(teacher_name)
+            
+            # Initialize enrollment list if not present.
+            if teacher_name not in enrollments:
+                enrollments[teacher_name] = []
                 save_data(ENROLLMENTS_DB_PATH, enrollments)
-                st.info(lang["enrollment_cancelled"])
-                st.rerun()
+            
+            # Display teacher description.
+            if selected_language == "English":
+                desc = f"{lang['teaches']} **{teacher_info['subject_en']}** {lang['to_grade']} **{teacher_info['grade']}**."
             else:
-                st.error(lang["not_enrolled"])
-        
-        # Show enrolled students.
-        with st.expander(lang["enrolled_label"]):
-            if enrollments[teacher_name]:
-                for s in enrollments[teacher_name]:
-                    st.write(f"- {s}")
-            else:
-                st.write(lang["no_enrollments"])
-        st.markdown("---")
+                desc = f"{lang['teaches']} **{teacher_info['subject_zh']}**， {lang['to_grade']} **{teacher_info['grade']}**."
+            st.write(desc)
+            
+            # Show the current enrollment vs. the teacher's enrollment cap.
+            current_enrollment = len(enrollments[teacher_name])
+            cap = teacher_info.get("enrollment_cap", 9999)
+            st.write(f"Enrolled: {current_enrollment}/{cap}")
+            
+            # Enrollment actions.
+            col1, col2 = st.columns(2)
+            with col1:
+                enroll_clicked = st.button(lang["enroll_button"], key=f"enroll_button_{teacher_name}")
+            with col2:
+                cancel_clicked = st.button(lang["cancel_button"], key=f"cancel_button_{teacher_name}")
+            
+            # Process enrollment.
+            if enroll_clicked:
+                if current_enrollment < cap:
+                    if user_name not in enrollments[teacher_name]:
+                        enrollments[teacher_name].append(user_name)
+                        save_data(ENROLLMENTS_DB_PATH, enrollments)
+                    st.success(lang["enroll_success"].format(name=user_name, teacher=teacher_name))
+                    st.rerun()
+                else:
+                    st.error("Enrollment cap reached for this teacher.")
+            
+            # Process cancellation.
+            if cancel_clicked:
+                if user_name in enrollments[teacher_name]:
+                    enrollments[teacher_name].remove(user_name)
+                    save_data(ENROLLMENTS_DB_PATH, enrollments)
+                    st.info(lang["enrollment_cancelled"])
+                    st.rerun()
+                else:
+                    st.error(lang["not_enrolled"])
+            
+            # Show enrolled students.
+            with st.expander(lang["enrolled_label"]):
+                if enrollments[teacher_name]:
+                    for s in enrollments[teacher_name]:
+                        st.write(f"- {s}")
+                else:
+                    st.write(lang["no_enrollments"])
+            st.markdown("---")
