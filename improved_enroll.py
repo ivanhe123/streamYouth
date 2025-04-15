@@ -100,55 +100,6 @@ def admin_route():
         save_data(ENROLLMENTS_DB_PATH, enrollments)
         st.success("Assignments updated successfully!")
 
-def teacher_panel():
-    st.title(texts["teacher_panel_title"])
-    global teacher_database
-    teacher_record = teacher_database.get(user_name, None)
-    if teacher_record is None:
-        st.write(texts["no_teacher_record"])
-        subject_en = st.text_input(texts["subject_en"])
-        subject_zh = st.text_input(texts["subject_zh"])
-        grade_val = st.text_input(texts["grade"])
-        enrollment_cap = st.number_input(texts["enrollment_cap"], min_value=1, value=30)
-        if st.button(texts["create_teacher_record"]):
-            teacher_database[user_name] = {
-                "subject_en": subject_en,
-                "subject_zh": subject_zh,
-                "grade": grade_val,
-                "enrollment_cap": int(enrollment_cap),
-                "teaching_confirmed": False
-            }
-            save_data(TEACHER_DB_PATH, teacher_database)
-            st.success("Teacher record created!")
-            st.rerun()
-    else:
-        st.subheader(texts["edit_teacher_record"])
-        subject_en = st.text_input(texts["subject_en"], value=teacher_record.get("subject_en", ""))
-        subject_zh = st.text_input(texts["subject_zh"], value=teacher_record.get("subject_zh", ""))
-        grade_val = st.text_input(texts["grade"], value=teacher_record.get("grade", ""))
-        enrollment_cap = st.number_input(texts["enrollment_cap"], min_value=1, value=teacher_record.get("enrollment_cap", 30))
-        
-        # Two action buttons: confirm or cancel teaching.
-        if st.button(texts["confirm_teaching"]):
-            teacher_record["teaching_confirmed"] = True
-            teacher_record["subject_en"] = subject_en
-            teacher_record["subject_zh"] = subject_zh
-            teacher_record["grade"] = grade_val
-            teacher_record["enrollment_cap"] = int(enrollment_cap)
-            teacher_database[user_name] = teacher_record
-            save_data(TEACHER_DB_PATH, teacher_database)
-            st.success("Teaching confirmed!")
-            st.rerun()
-        if st.button(texts["cancel_teaching"]):
-            teacher_record["teaching_confirmed"] = False
-            teacher_database[user_name] = teacher_record
-            save_data(TEACHER_DB_PATH, teacher_database)
-            st.success("Teaching canceled!")
-            st.rerun()
-        st.write("Current teacher record:")
-        st.json(teacher_record)
-
-
 
 # --- Bilingual Texts and Sample Teacher Data ---
 texts = {
@@ -215,6 +166,53 @@ texts = {
         "cancel_teaching": "取消教学"
     }
 }
+def teacher_panel():
+    st.title(texts["teacher_panel_title"])
+    global teacher_database
+    teacher_record = teacher_database.get(user_name, None)
+    if teacher_record is None:
+        st.write(texts["no_teacher_record"])
+        subject_en = st.text_input(texts["subject_en"])
+        subject_zh = st.text_input(texts["subject_zh"])
+        grade_val = st.text_input(texts["grade"])
+        enrollment_cap = st.number_input(texts["enrollment_cap"], min_value=1, value=30)
+        if st.button(texts["create_teacher_record"]):
+            teacher_database[user_name] = {
+                "subject_en": subject_en,
+                "subject_zh": subject_zh,
+                "grade": grade_val,
+                "enrollment_cap": int(enrollment_cap),
+                "teaching_confirmed": False
+            }
+            save_data(TEACHER_DB_PATH, teacher_database)
+            st.success("Teacher record created!")
+            st.rerun()
+    else:
+        st.subheader(texts["edit_teacher_record"])
+        subject_en = st.text_input(texts["subject_en"], value=teacher_record.get("subject_en", ""))
+        subject_zh = st.text_input(texts["subject_zh"], value=teacher_record.get("subject_zh", ""))
+        grade_val = st.text_input(texts["grade"], value=teacher_record.get("grade", ""))
+        enrollment_cap = st.number_input(texts["enrollment_cap"], min_value=1, value=teacher_record.get("enrollment_cap", 30))
+        
+        # Two action buttons: confirm or cancel teaching.
+        if st.button(texts["confirm_teaching"]):
+            teacher_record["teaching_confirmed"] = True
+            teacher_record["subject_en"] = subject_en
+            teacher_record["subject_zh"] = subject_zh
+            teacher_record["grade"] = grade_val
+            teacher_record["enrollment_cap"] = int(enrollment_cap)
+            teacher_database[user_name] = teacher_record
+            save_data(TEACHER_DB_PATH, teacher_database)
+            st.success("Teaching confirmed!")
+            st.rerun()
+        if st.button(texts["cancel_teaching"]):
+            teacher_record["teaching_confirmed"] = False
+            teacher_database[user_name] = teacher_record
+            save_data(TEACHER_DB_PATH, teacher_database)
+            st.success("Teaching canceled!")
+            st.rerun()
+        st.write("Current teacher record:")
+        st.json(teacher_record)
 
 # Sample teacher data (in memory)
 teachers = {
