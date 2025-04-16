@@ -451,12 +451,16 @@ else:
             st.write(description)
 
             # --- Capacity Display and Check ---
+            # --- Capacity Display and Check ---
             current_enrollment_count = len(enrollments.get(teacher_name, []))
             cap = teacher_info.get("enrollment_cap")  # Will be None or a positive integer
             if cap is None:
                 cap_display = lang["unlimited"]
+                is_full = False  # Unlimited capacity means never full
             else:
                 cap_display = str(cap)
+                is_full = current_enrollment_count >= cap  # Class is full if enrollment meets or exceeds cap
+    
             caption = lang["user_enrollment_caption"].format(count=current_enrollment_count, cap=cap_display)
             st.caption(caption)
 
