@@ -444,8 +444,8 @@ else:
 
         for teacher_name, teacher_info in filtered_teachers.items():
             st.subheader(teacher_name)
-            subject = teacher_info.get(f"subject_{selected_language.lower()[:2]}", "N/A")
-            grade = teacher_info.get("grade", "N/A")
+            subject = teacher_info[f"subject_{selected_language.lower()[:2]}"]
+            grade = teacher_info["grade"]
             description = f"{lang['teaches']} **{subject}** ({lang['to_grade']} **{grade}**)"
             st.write(description)
 
