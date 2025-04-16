@@ -396,8 +396,6 @@ else:
     user_database = load_data(USER_DB_PATH)
     teachers_database = load_data(TEACHERS_DB_PATH)
     enrollments = load_data(ENROLLMENTS_DB_PATH)
-    if st.button(lang["refresh"]):
-        st.rerun()
 
     if secure_id not in user_database:
         st.title(lang["page_title"]); st.write(lang["register_prompt"])
@@ -413,6 +411,8 @@ else:
     user_name = user_database.get(secure_id, "Unknown User")
     st.sidebar.write(lang["logged_in"].format(name=user_name))
     st.title(lang["page_title"])
+    if st.button(lang["refresh"]):
+        st.rerun()
 
     # Teacher Search and Enrollment with Grade Filter
     teacher_filter = st.text_input(lang["teacher_search_label"], key="teacher_filter")
