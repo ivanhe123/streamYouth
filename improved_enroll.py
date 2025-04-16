@@ -55,6 +55,8 @@ def teacher_dashboard():
     if st.button("Logout", key="teacher_logout"):
         del st.session_state.teacher_logged_in, st.session_state.teacher_id, st.session_state.teacher_name
         st.success("Logged out."); st.rerun()
+    if st.button("Refresh"):
+        st.rerun()
     st.markdown("---")
 
     teacher_name = st.session_state.teacher_name
@@ -383,6 +385,8 @@ request_id = plain_id.lower()
 if request_id == "admin": admin_route()
 elif request_id == "teacher": teacher_login_page()
 else:
+    if st.button("Refresh"):
+        st.rerun()
     secure_id = encrypt_id(plain_id)
     selected_language = st.sidebar.selectbox("Language / 语言", options=["English", "中文"], key="lang_select")
     lang = texts[selected_language]
