@@ -387,8 +387,6 @@ request_id = plain_id.lower()
 if request_id == "admin": admin_route()
 elif request_id == "teacher": teacher_login_page()
 else:
-    
-    secure_id = encrypt_id(plain_id)
     selected_language = st.sidebar.selectbox("Language / 语言", options=["English", "中文"], key="lang_select")
     lang = texts[selected_language]
     st.markdown(f"""<script>document.title = "{lang['page_title']}";</script>""", unsafe_allow_html=True)
