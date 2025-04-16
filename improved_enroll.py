@@ -340,7 +340,8 @@ texts = {
         "user_enrollment_caption": "Enrolled: {count} / {cap}",
         "unlimited": "Unlimited",
         "grade_select_label": "Select Grade",
-        "all_grades": "All"
+        "all_grades": "All",
+        "refresh":"refresh"
     },
     "中文": {
         "page_title": "PLE Youth 教师搜索与注册",
@@ -366,7 +367,8 @@ texts = {
         "user_enrollment_caption": "已报名: {count} / {cap}",
         "unlimited": "无限制",
         "grade_select_label": "选择年级",
-        "all_grades": "所有年级"
+        "all_grades": "所有年级",
+        "refresh":"刷新"
     }
 }
 
@@ -385,8 +387,7 @@ request_id = plain_id.lower()
 if request_id == "admin": admin_route()
 elif request_id == "teacher": teacher_login_page()
 else:
-    if st.button("Refresh"):
-        st.rerun()
+    
     secure_id = encrypt_id(plain_id)
     selected_language = st.sidebar.selectbox("Language / 语言", options=["English", "中文"], key="lang_select")
     lang = texts[selected_language]
@@ -395,6 +396,8 @@ else:
     user_database = load_data(USER_DB_PATH)
     teachers_database = load_data(TEACHERS_DB_PATH)
     enrollments = load_data(ENROLLMENTS_DB_PATH)
+    if st.button(lang["refresh"]):
+        st.rerun()
 
     if secure_id not in user_database:
         st.title(lang["page_title"]); st.write(lang["register_prompt"])
