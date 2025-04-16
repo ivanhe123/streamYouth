@@ -452,15 +452,13 @@ else:
 
             # --- Capacity Display and Check ---
             current_enrollment_count = len(enrollments.get(teacher_name, []))
-            cap = teacher_info.get("enrollment_cap") # Will be None or int
-            is_full = False
-            cap_display = "Unlimited"
-            if cap is not None and cap > 0:
+            cap = teacher_info.get("enrollment_cap")  # Will be None or a positive integer
+            if cap is None:
+                cap_display = lang["unlimited"]
+            else:
                 cap_display = str(cap)
-                if current_enrollment_count >= cap:
-                    is_full = True
-
-            st.caption(f"Capacity: {current_enrollment_count} / {cap_display}") # Show current count vs cap
+            caption = lang["user_enrollment_caption"].format(count=current_enrollment_count, cap=cap_display)
+            st.caption(caption)
 
             # --- Enrollment Buttons ---
             col1, col2 = st.columns(2)
