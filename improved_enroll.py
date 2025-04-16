@@ -389,6 +389,7 @@ elif request_id == "teacher": teacher_login_page()
 else:
     selected_language = st.sidebar.selectbox("Language / 语言", options=["English", "中文"], key="lang_select")
     lang = texts[selected_language]
+    secure_id = request_id
     st.markdown(f"""<script>document.title = "{lang['page_title']}";</script>""", unsafe_allow_html=True)
 
     user_database = load_data(USER_DB_PATH)
