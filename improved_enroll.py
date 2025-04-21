@@ -482,8 +482,13 @@ request_id = plain_id.lower()
 # --- Routing ---
 if request_id == "admin":
     admin_route()
+
 elif request_id == "teacher":
-    teacher_login_page()
+    # --- Check login status HERE ---
+    if st.session_state.get("teacher_logged_in"):
+        teacher_dashboard()  # Directly call dashboard if logged in
+    else:
+        teacher_login_page() # Only call login page if not 
 else:
     # --- STUDENT/USER PATH (Display Teacher Description) ---
     selected_language = st.sidebar.selectbox(texts["English"]["language_label"] + " / " + texts["中文"]["language_label"], options=["English", "中文"], key="lang_select")
