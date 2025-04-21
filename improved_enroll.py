@@ -263,8 +263,9 @@ def admin_route():
                 "Encrypted ID": user_id,
                 "Name": user_info.get("name", ""),
                 "Grade": user_info.get("grade", ""),
-                "Location": user_info.get("location", ""),
-                "Level": user_info.get("level", "")
+                "Country": user_info.get("country", ""),
+                "State/Province": user_info.get("state", ""),
+                "City": user_info.get("city", "")
             })
         else:
             # Old format, only name
@@ -272,11 +273,12 @@ def admin_route():
                 "Encrypted ID": user_id,
                 "Name": user_info,
                 "Grade": "",
-                "Location": "",
-                "Level": ""
+                "Country": "",
+                "State/Province": "",
+                "City": ""
             })
     if not students_list:
-        students_df = pd.DataFrame(columns=["Encrypted ID", "Name", "Grade", "Location", "Level"])
+        students_df = pd.DataFrame(columns=["Encrypted ID", "Name", "Grade", "Country", "State/Province", "City"])
     else:
         students_df = pd.DataFrame(students_list)
     edited_students_df = st.data_editor(
@@ -287,8 +289,9 @@ def admin_route():
             "Encrypted ID": st.column_config.TextColumn("Encrypted ID", disabled=True),
             "Name": st.column_config.TextColumn("Student Name", required=True),
             "Grade": st.column_config.TextColumn("Grade"),
-            "Location": st.column_config.TextColumn("Location"),
-            "Level": st.column_config.TextColumn("Level")
+            "Country": st.column_config.TextColumn("Country"),
+            "State/Province": st.column_config.TextColumn("State/Province"),
+            "City": st.column_config.TextColumn("City")
         },
         use_container_width=True
     )
@@ -311,8 +314,9 @@ def admin_route():
             user_id = row["Encrypted ID"]
             name = row["Name"]
             grade = row["Grade"]
-            location = row["Location"]
-            level = row["Level"]
+            country = row["Country"]
+            state = row["State/Province"]
+            city = row["City"]
             if pd.isna(name) or str(name).strip() == "":
                 st.error(f"Row {index+1}: Name empty.")
                 error_occurred = True
@@ -323,13 +327,15 @@ def admin_route():
                 continue
             clean_name = str(name).strip()
             clean_grade = str(grade).strip() if pd.notna(grade) else ""
-            clean_location = str(location).strip() if pd.notna(location) else ""
-            clean_level = str(level).strip() if pd.notna(level) else ""
+            clean_country = str(country).strip() if pd.notna(country) else ""
+            clean_state = str(state).strip() if pd.notna(state) else ""
+            clean_city = str(city).strip() if pd.notna(city) else ""
             new_user_database[user_id] = {
                 "name": clean_name,
                 "grade": clean_grade,
-                "location": clean_location,
-                "level": clean_level
+                "country": clean_country,
+                "state": clean_state,
+                "city": clean_city
             }
             # Check for name change
             old_user_info = user_db_before_del.get(user_id)
@@ -446,7 +452,7 @@ texts = {
         "cancel_button": "Cancel Enrollment",
         "enroll_success": "Thank you, {name}! You are now enrolled in {teacher}'s class!",
         "enrollment_cancelled": "Enrollment has been cancelled.",
-        "register_prompt": "Welcome! Please register by entering the student's English Full name below:",
+        "register_prompt": "Welcome! Please register by entering the student's details below:",
         "register_button": "Register",
         "logged_in": "Logged in as: {name}",
         "enrolled_label": "Enrolled Students",
@@ -461,8 +467,12 @@ texts = {
         "all_grades": "All",
         "refresh": "refresh",
         "register_grade_label": "Current Grade",
-        "register_location_label": "Location",
-        "register_level_label": "RAZ Level"
+        "register_country_label": "Country",
+        "register_state_label": "State/Province",
+        "register_city_label": "City",
+        "select_country": "Select Country",
+        "select_state": "Select State/Province",
+        "select_city": "Select City"
     },
     "中文": {
         "page_title": "PLE Youth 教师搜索与注册",
@@ -476,7 +486,7 @@ texts = {
         "cancel_button": "取消报名",
         "enroll_success": "谢谢, {name}! 你已注册到 {teacher} 的课程！",
         "enrollment_cancelled": "报名已取消。",
-        "register_prompt": "欢迎！请通过输入学生的英文（或拼音）全名完成注册：",
+        "register_prompt": "欢迎！请通过输入学生的详细信息完成注册：",
         "register_button": "注册",
         "logged_in": "已登录: {name}",
         "enrolled_label": "已报名的学生",
@@ -491,13 +501,30 @@ texts = {
         "all_grades": "所有年级",
         "refresh": "刷新",
         "register_grade_label": "当前年级",
-        "register_location_label": "居住地",
-        "register_level_label": "RAZ 等级"
+        "register_country_label": "国家",
+        "register_state_label": "州/省",
+        "register_city_label": "城市",
+        "select_country": "选择国家",
+        "select_state": "选择州/省",
+        "select_city": "选择城市"
     }
 }
 
-# CSS
-st.markdown(""" <style> .centered { display: flex; align-items: center; height: 100%; } </style> """, unsafe_allow_html=True)
+# Sample location data (replace with actual data or API)
+location_data = {
+    "USA": {
+        "California": ["Los Angeles", "San Francisco"],
+        "New York": ["New York City", "Buffalo"]
+    },
+    "China": {
+        "Beijing": ["Beijing"],
+        "Shanghai": ["Shanghai"]
+    },
+    "Canada": {
+        "Ontario": ["Toronto", "Ottawa"],
+        "Quebec": ["Montreal", "Quebec City"]
+    }
+}
 
 # Main Application Logic
 params = st.query_params
@@ -527,26 +554,45 @@ else:
         st.write(lang["register_prompt"])
         new_user_name = st.text_input("Student's English Full Name / 学生英文全名", key="register_input")
         new_user_grade = st.text_input(lang["register_grade_label"], key="register_grade")
-        new_user_location = st.text_input(lang["register_location_label"], key="register_location")
-        new_user_level = st.text_input(lang["register_level_label"], key="register_level")
+
+        # Country dropdown
+        countries = list(location_data.keys())
+        country_label = lang["register_country_label"]
+        selected_country = st.selectbox(f"{country_label} / {lang['select_country']}", options=countries, key="register_country")
+
+        # State/Province dropdown
+        if selected_country:
+            states = list(location_data[selected_country].keys())
+            state_label = lang["register_state_label"]
+            selected_state = st.selectbox(f"{state_label} / {lang['select_state']}", options=states, key="register_state")
+        else:
+            selected_state = None
+
+        # City dropdown
+        if selected_state:
+            cities = location_data[selected_country][selected_state]
+            city_label = lang["register_city_label"]
+            selected_city = st.selectbox(f"{city_label} / {lang['select_city']}", options=cities, key="register_city")
+        else:
+            selected_city = None
+
         if st.button(lang["register_button"], key="register_btn"):
-            if new_user_name and new_user_name.strip():
+            if new_user_name and new_user_name.strip() and selected_country and selected_state and selected_city:
                 clean_name = new_user_name.strip()
                 clean_grade = new_user_grade.strip() if new_user_grade else ""
-                clean_location = new_user_location.strip() if new_user_location else ""
-                clean_level = new_user_level.strip() if new_user_level else ""
                 user_database[secure_id] = {
                     "name": clean_name,
                     "grade": clean_grade,
-                    "location": clean_location,
-                    "level": clean_level
+                    "country": selected_country,
+                    "state": selected_state,
+                    "city": selected_city
                 }
                 save_data(USER_DB_PATH, user_database)
                 st.success(f"Registered {clean_name}! Reloading.")
                 st.balloons()
                 st.rerun()
             else:
-                st.error(lang["name_required"])
+                st.error("Please fill in all required fields.")
         st.stop()
 
     user_info = user_database.get(secure_id)
