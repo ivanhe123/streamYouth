@@ -1,5 +1,10 @@
-# Sample location data (replace with actual data or API)
-# --- Added more comprehensive sample data ---
+import streamlit as st
+import json
+import os
+import hmac
+import hashlib
+import pandas as pd
+import uuid
 location_data = {
     "USA": {
         "California": ["Los Angeles", "San Francisco", "San Diego", "Sacramento"],
@@ -24,10 +29,433 @@ location_data = {
     }
     # Add more countries, states/provinces, and cities as needed
 }
+# File Database Helper Functions
+st.markdown("""<style>.st-emotion-cache-1p1m4ay{ visibility:hidden }</style>""", unsafe_allow_html=True)
+USER_DB_PATH = "user_db.json"
+ENROLLMENTS_DB_PATH = "enrollments.json"
+TEACHERS_DB_PATH = "teachers.json"
 
-# ... (keep all your existing helper functions, database loading, etc.) ...
+def load_data(path):
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            try:
+                content = f.read()
+                if not content: return {}
+                return json.loads(content)
+            except json.JSONDecodeError:
+                st.error(f"Error decoding JSON from {path}.")
+                return {}
+    return {}
 
-# Bilingual Texts - Ensure these keys are present
+def save_data(path, data):
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e: st.error(f"Error saving data to {path}: {e}")
+
+# Load file databases
+user_database = load_data(USER_DB_PATH)
+enrollments = load_data(ENROLLMENTS_DB_PATH)
+teachers_database = load_data(TEACHERS_DB_PATH)
+
+# Encryption & ID Generation
+if "secret_key" not in st.secrets: st.error("`secret_key` missing."); st.stop()
+SECRET_KEY = st.secrets["secret_key"]
+def encrypt_id(plain_id: str) -> str: return hmac.new(SECRET_KEY.encode(), plain_id.encode(), hashlib.sha256).hexdigest()
+def generate_teacher_id(): return uuid.uuid4().hex
+
+# Validate Teacher ID
+def validate_teacher_id(entered_id: str):
+    current_teachers_db = load_data(TEACHERS_DB_PATH)
+    for name, details in current_teachers_db.items():
+        if details.get("id") == entered_id: return name, details
+    return None, None
+
+# Teacher Dashboard
+def teacher_dashboard():
+    global teachers_database, enrollments
+    st.title(f"Teacher Dashboard: {st.session_state.teacher_name}")
+    if st.button("Logout", key="teacher_logout"):
+        del st.session_state.teacher_logged_in, st.session_state.teacher_id, st.session_state.teacher_name
+        st.success("Logged out."); st.rerun()
+    if st.button("Refresh"):
+        st.rerun()
+    st.markdown("---")
+
+    teacher_name = st.session_state.teacher_name
+    current_teachers_db = load_data(TEACHERS_DB_PATH)
+    teacher_details = current_teachers_db.get(teacher_name)
+    if not teacher_details: st.error("Teacher data not found."); st.stop()
+
+    st.subheader("Manage Class Settings")
+    with st.form("edit_teacher_form"):
+        st.write("**Class Information**")
+        new_subject_en = st.text_input("Subject (English)", value=teacher_details.get("subject_en", ""))
+        new_subject_zh = st.text_input("Subject (Chinese)", value=teacher_details.get("subject_zh", ""))
+        new_grade = st.text_input("Grade", value=teacher_details.get("grade", ""))
+        st.write("**Enrollment Limit**")
+        current_cap = teacher_details.get("enrollment_cap")
+        new_cap = st.number_input("Maximum Students (leave blank or 0 for unlimited)", min_value=0, value=current_cap if current_cap is not None else None, step=1, format="%d", key="teacher_edit_cap")
+        submitted = st.form_submit_button("Save Settings")
+        if submitted:
+            processed_cap = int(new_cap) if new_cap is not None and new_cap > 0 else None
+            current_teachers_db[teacher_name].update({
+                "subject_en": new_subject_en.strip(),
+                "subject_zh": new_subject_zh.strip(),
+                "grade": new_grade.strip(),
+                "enrollment_cap": processed_cap
+            })
+            save_data(TEACHERS_DB_PATH, current_teachers_db)
+            teachers_database = current_teachers_db
+            st.success("Settings updated successfully!")
+            st.rerun()
+
+    st.markdown("---")
+    st.subheader("Class Status")
+    is_active = teacher_details.get("is_active", True)
+    status_text = "Active (Students can enroll)" if is_active else "Cancelled (Students cannot enroll)"
+    status_func = st.success if is_active else st.warning
+    status_func(f"Status: {status_text}")
+    if is_active:
+        if st.button("Cancel Class (Hide from Enrollment)", key="cancel_class_btn"):
+            current_teachers_db[teacher_name]["is_active"] = False
+            save_data(TEACHERS_DB_PATH, current_teachers_db); teachers_database = current_teachers_db
+            st.warning("Class cancelled."); st.rerun()
+    else:
+        if st.button("Reactivate Class (Allow Enrollment)", key="reactivate_class_btn"):
+            current_teachers_db[teacher_name]["is_active"] = True
+            save_data(TEACHERS_DB_PATH, current_teachers_db); teachers_database = current_teachers_db
+            st.success("Class reactivated."); st.rerun()
+
+    st.markdown("---")
+    st.subheader("Enrollment Overview")
+    current_enrollments = load_data(ENROLLMENTS_DB_PATH)
+    enrolled_students = current_enrollments.get(teacher_name, [])
+    enrollment_count = len(enrolled_students)
+    display_cap = teacher_details.get("enrollment_cap", "Unlimited")
+    if isinstance(display_cap, int) and display_cap <= 0: display_cap = "Unlimited"
+    st.metric("Current Enrollment", f"{enrollment_count} / {display_cap}")
+    if enrolled_students:
+        st.write("**Enrolled Students:**")
+        for i, student_name in enumerate(enrolled_students, 1):
+             st.markdown(f"{i}. {student_name}")
+    else:
+        st.info("No students are currently enrolled.")
+
+# Teacher Login Page
+def teacher_login_page():
+    if st.session_state.get("teacher_logged_in"): teacher_dashboard(); st.stop()
+    st.title("Teacher Portal Login")
+    entered_id = st.text_input("Enter your Teacher ID:", type="password", key="teacher_id_input")
+    if st.button("Login", key="teacher_login_submit"):
+        if not entered_id: st.warning("Please enter ID.")
+        else:
+            teacher_name, teacher_details = validate_teacher_id(entered_id)
+            if teacher_name and teacher_details:
+                st.session_state.teacher_logged_in = True
+                st.session_state.teacher_id = entered_id
+                st.session_state.teacher_name = teacher_name
+                st.success(f"Welcome, {teacher_name}!"); st.rerun()
+            else: st.error("Invalid Teacher ID.")
+
+# Admin Route
+def admin_route():
+    global user_database, enrollments, teachers_database
+    st.title("Admin Dashboard")
+    if "passcode" not in st.secrets: st.error("Admin `passcode` missing."); st.stop()
+    admin_password = st.text_input("Enter Admin Password:", type="password", key="admin_pw")
+    if not admin_password: st.warning("Please enter password."); st.stop()
+    if admin_password != st.secrets["passcode"]: st.error("Incorrect password."); st.stop()
+    st.success("Access granted.")
+    if st.button("Refresh Data from Files"):
+        user_database, enrollments, teachers_database = map(load_data, [USER_DB_PATH, ENROLLMENTS_DB_PATH, TEACHERS_DB_PATH])
+        st.rerun()
+    st.markdown("---")
+
+    st.subheader("Manage Teachers")
+    st.markdown("Add/edit details. Set cap=0 or leave blank for unlimited. Use trash icon to remove.")
+    teachers_list = []
+    needs_saving_defaults = False
+    temp_teachers_db = load_data(TEACHERS_DB_PATH)
+    for name, details in temp_teachers_db.items():
+        if "id" not in details: details["id"] = generate_teacher_id(); needs_saving_defaults = True
+        if "is_active" not in details: details["is_active"] = True; needs_saving_defaults = True
+        if "enrollment_cap" not in details: details["enrollment_cap"] = None; needs_saving_defaults = True
+        teachers_list.append({
+            "Teacher ID": details["id"],
+            "Teacher Name": name,
+            "Subject (English)": details.get("subject_en", ""),
+            "Subject (Chinese)": details.get("subject_zh", ""),
+            "Grade": details.get("grade", ""),
+            "Is Active": details.get("is_active"),
+            "Enrollment Cap": details.get("enrollment_cap")
+        })
+    if needs_saving_defaults:
+        save_data(TEACHERS_DB_PATH, temp_teachers_db)
+        teachers_database = temp_teachers_db
+        st.info("Applied default values (ID/Status/Cap) where missing. Data saved.")
+    if not teachers_list:
+        teachers_df = pd.DataFrame(columns=["Teacher ID", "Teacher Name", "Subject (English)", "Subject (Chinese)", "Grade", "Is Active", "Enrollment Cap"])
+    else:
+        teachers_df = pd.DataFrame(teachers_list)
+    edited_teachers_df = st.data_editor(
+        teachers_df,
+        num_rows="dynamic",
+        key="teacher_editor",
+        column_config={
+             "Teacher ID": st.column_config.TextColumn("ID", disabled=True, width="small"),
+             "Teacher Name": st.column_config.TextColumn("Name", required=True),
+             "Subject (English)": st.column_config.TextColumn("Subject EN"),
+             "Subject (Chinese)": st.column_config.TextColumn("Subject ZH"),
+             "Grade": st.column_config.TextColumn("Grade", width="small"),
+             "Is Active": st.column_config.CheckboxColumn("Active?", disabled=True, width="small"),
+             "Enrollment Cap": st.column_config.NumberColumn("Cap", help="Max students. Leave blank or 0 for unlimited.", min_value=0, step=1, format="%d", width="small")
+        },
+        column_order=("Teacher ID", "Teacher Name", "Enrollment Cap", "Subject (English)", "Subject (Chinese)", "Grade", "Is Active"),
+        use_container_width=True
+    )
+    if st.button("Save Changes to Teachers"):
+        original_teachers_data = teachers_database.copy()
+        new_teachers_database = {}
+        error_occurred = False; seen_names = set(); processed_ids = set()
+        for index, row in edited_teachers_df.iterrows():
+            name = row["Teacher Name"]
+            teacher_id = row["Teacher ID"]
+            enrollment_cap_input = row["Enrollment Cap"]
+            if pd.isna(teacher_id) or str(teacher_id).strip() == "":
+                is_new_teacher = True; teacher_id = generate_teacher_id()
+            else:
+                is_new_teacher = True
+                for _, d in original_teachers_data.items():
+                    if d.get("id") == teacher_id: is_new_teacher = False; break
+            if pd.isna(name) or str(name).strip() == "": st.error(f"Row {index+1}: Name empty."); error_occurred = True; continue
+            name = str(name).strip()
+            if name in seen_names: st.error(f"Row {index+1}: Duplicate Name '{name}'."); error_occurred = True; continue
+            if not is_new_teacher:
+                 for en, ed in original_teachers_data.items():
+                     if ed.get("id") != teacher_id and en == name: st.error(f"Row {index+1}: Name '{name}' used."); error_occurred = True; break
+                 if error_occurred: continue
+            seen_names.add(name)
+            processed_ids.add(teacher_id)
+            processed_cap = None
+            if pd.notna(enrollment_cap_input) and enrollment_cap_input > 0:
+                 try:
+                     processed_cap = int(enrollment_cap_input)
+                 except (ValueError, TypeError):
+                     st.error(f"Row {index+1}: Invalid number format for Cap '{enrollment_cap_input}'.")
+                     error_occurred = True
+                     continue
+            original_details = next((d for _, d in original_teachers_data.items() if d.get("id") == teacher_id), None)
+            current_is_active = original_details.get("is_active", True) if original_details else True
+            new_teachers_database[name] = {
+                "id": teacher_id,
+                "subject_en": str(row["Subject (English)"]) if pd.notna(row["Subject (English)"]) else "",
+                "subject_zh": str(row["Subject (Chinese)"]) if pd.notna(row["Subject (Chinese)"]) else "",
+                "grade": str(row["Grade"]) if pd.notna(row["Grade"]) else "",
+                "is_active": current_is_active,
+                "enrollment_cap": processed_cap
+            }
+        deleted_teacher_names = [on for on, od in original_teachers_data.items() if od.get("id") not in processed_ids]
+        if not error_occurred:
+            try:
+                save_data(TEACHERS_DB_PATH, new_teachers_database)
+                teachers_database = new_teachers_database
+                st.success("Teacher data updated!")
+                if deleted_teacher_names:
+                    enrollments_updated = False
+                    current_enrollments = load_data(ENROLLMENTS_DB_PATH)
+                    new_enrollments_after_teacher_delete = current_enrollments.copy()
+                    for removed_teacher_name in deleted_teacher_names:
+                        if removed_teacher_name in new_enrollments_after_teacher_delete:
+                            del new_enrollments_after_teacher_delete[removed_teacher_name]
+                            enrollments_updated = True
+                            st.warning(f"Removed enrollments for deleted teacher: {removed_teacher_name}")
+                    if enrollments_updated:
+                         save_data(ENROLLMENTS_DB_PATH, new_enrollments_after_teacher_delete)
+                         enrollments = new_enrollments_after_teacher_delete
+                st.rerun()
+            except Exception as e: st.error(f"Failed to save teacher data: {e}")
+        else: st.warning("Fix errors before saving teacher changes.")
+
+    st.markdown("---")
+    st.subheader("Manage Registered Students")
+    students_list = []
+    for user_id, user_info in load_data(USER_DB_PATH).items():
+        if isinstance(user_info, dict):
+            students_list.append({
+                "Encrypted ID": user_id,
+                "Name": user_info.get("name", ""),
+                "Grade": user_info.get("grade", ""),
+                "Location": user_info.get("location", ""),
+                "Level": user_info.get("level", "")
+            })
+        else:
+            # Old format, only name
+            students_list.append({
+                "Encrypted ID": user_id,
+                "Name": user_info,
+                "Grade": "",
+                "Location": "",
+                "Level": ""
+            })
+    if not students_list:
+        students_df = pd.DataFrame(columns=["Encrypted ID", "Name", "Grade", "Location", "Level"])
+    else:
+        students_df = pd.DataFrame(students_list)
+    edited_students_df = st.data_editor(
+        students_df,
+        num_rows="dynamic",
+        key="student_editor",
+        column_config={
+            "Encrypted ID": st.column_config.TextColumn("Encrypted ID", disabled=True),
+            "Name": st.column_config.TextColumn("Student Name", required=True),
+            "Grade": st.column_config.TextColumn("Grade"),
+            "Location": st.column_config.TextColumn("Location"),
+            "Level": st.column_config.TextColumn("Level")
+        },
+        use_container_width=True
+    )
+    if st.button("Save Changes to Students"):
+        original_ids = set(students_df["Encrypted ID"])
+        edited_ids = set(edited_students_df["Encrypted ID"])
+        deleted_ids = original_ids - edited_ids
+        user_db_before_del = load_data(USER_DB_PATH)
+        deleted_student_names = set()
+        for user_id in deleted_ids:
+            user_info = user_db_before_del.get(user_id)
+            if isinstance(user_info, str):
+                deleted_student_names.add(user_info)
+            elif isinstance(user_info, dict):
+                deleted_student_names.add(user_info.get("name", ""))
+        new_user_database = {}
+        error_occurred = False
+        name_changes = {}  # old_name -> new_name
+        for index, row in edited_students_df.iterrows():
+            user_id = row["Encrypted ID"]
+            name = row["Name"]
+            grade = row["Grade"]
+            location = row["Location"]
+            level = row["Level"]
+            if pd.isna(name) or str(name).strip() == "":
+                st.error(f"Row {index+1}: Name empty.")
+                error_occurred = True
+                continue
+            if pd.isna(user_id):
+                st.error(f"Row {index+1}: ID missing.")
+                error_occurred = True
+                continue
+            clean_name = str(name).strip()
+            clean_grade = str(grade).strip() if pd.notna(grade) else ""
+            clean_location = str(location).strip() if pd.notna(location) else ""
+            clean_level = str(level).strip() if pd.notna(level) else ""
+            new_user_database[user_id] = {
+                "name": clean_name,
+                "grade": clean_grade,
+                "location": clean_location,
+                "level": clean_level
+            }
+            # Check for name change
+            old_user_info = user_db_before_del.get(user_id)
+            if old_user_info:
+                old_name = old_user_info if isinstance(old_user_info, str) else old_user_info.get("name", "")
+                if old_name != clean_name:
+                    name_changes[old_name] = clean_name
+        if not error_occurred:
+            try:
+                save_data(USER_DB_PATH, new_user_database)
+                user_database = new_user_database
+                st.success("Student data updated!")
+                if deleted_student_names:
+                    st.info(f"Removed students: {', '.join(deleted_student_names)}")
+                # Update enrollments for deleted students and name changes
+                current_enrollments = load_data(ENROLLMENTS_DB_PATH)
+                new_enrollments = current_enrollments.copy()
+                enrollments_updated = False
+                # Handle deletions
+                for teacher, studs in current_enrollments.items():
+                    cleaned_list = [s for s in studs if s not in deleted_student_names]
+                    if cleaned_list:
+                        new_enrollments[teacher] = cleaned_list
+                    else:
+                        del new_enrollments[teacher]
+                    if len(cleaned_list) != len(studs):
+                        enrollments_updated = True
+                # Handle name changes
+                if name_changes:
+                    for teacher, studs in new_enrollments.items():
+                        new_studs = [name_changes.get(s, s) for s in studs]
+                        if new_studs != studs:
+                            new_enrollments[teacher] = new_studs
+                            enrollments_updated = True
+                if enrollments_updated:
+                    save_data(ENROLLMENTS_DB_PATH, new_enrollments)
+                    enrollments = new_enrollments
+                    st.info("Updated enrollments for deleted students or name changes.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Failed to save student data: {e}")
+        else:
+            st.warning("Fix errors before saving student changes.")
+
+    st.markdown("---")
+    st.subheader("Teacher-Student Assignments")
+    assignments = []
+    current_enrollments = load_data(ENROLLMENTS_DB_PATH)
+    for teacher, students in current_enrollments.items():
+        for student in students:
+            assignments.append({"Teacher": teacher, "Student": student})
+    if not assignments:
+        assignments_df = pd.DataFrame(columns=["Teacher", "Student"])
+    else:
+        assignments_df = pd.DataFrame(assignments)
+    available_teachers = list(load_data(TEACHERS_DB_PATH).keys())
+    user_db = load_data(USER_DB_PATH)
+    available_students = [u["name"] if isinstance(u, dict) else u for u in user_db.values()]
+    edited_assignments = st.data_editor(
+        assignments_df,
+        num_rows="dynamic",
+        key="assignment_editor",
+        column_config={
+            "Teacher": st.column_config.SelectboxColumn("Teacher", options=available_teachers, required=True),
+            "Student": st.column_config.SelectboxColumn("Student", options=available_students, required=True)
+        },
+        use_container_width=True
+    )
+    if st.button("Save Changes to Assignments"):
+        new_enrollments = {}
+        error_occurred = False
+        processed_pairs = set()
+        for index, row in edited_assignments.iterrows():
+            teacher, student = row["Teacher"], row["Student"]
+            if pd.isna(teacher) or str(teacher).strip() == "":
+                st.error(f"Row {index+1}: Teacher empty.")
+                error_occurred = True
+                continue
+            if pd.isna(student) or str(student).strip() == "":
+                st.error(f"Row {index+1}: Student empty.")
+                error_occurred = True
+                continue
+            teacher, student = str(teacher).strip(), str(student).strip()
+            if (teacher, student) in processed_pairs:
+                st.warning(f"Row {index+1}: Duplicate assignment {student} to {teacher}.")
+                continue
+            processed_pairs.add((teacher, student))
+            if teacher not in new_enrollments:
+                new_enrollments[teacher] = []
+            if student not in new_enrollments[teacher]:
+                new_enrollments[teacher].append(student)
+        if not error_occurred:
+            try:
+                save_data(ENROLLMENTS_DB_PATH, new_enrollments)
+                enrollments = new_enrollments
+                st.success("Assignments updated!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Failed to save assignments: {e}")
+        else:
+            st.warning("Fix errors before saving assignments.")
+
+# Bilingual Texts
 texts = {
     "English": {
         "page_title": "PLE Youth Enrollment",
@@ -103,8 +531,9 @@ texts = {
     }
 }
 
+# CSS
+st.markdown(""" <style> .centered { display: flex; align-items: center; height: 100%; } </style> """, unsafe_allow_html=True)
 
-# Main Application Logic
 params = st.query_params
 plain_id = params.get("id", "")
 if isinstance(plain_id, list): plain_id = plain_id[0] if plain_id else ""
