@@ -180,7 +180,6 @@ def teacher_dashboard():
     # ... (Class Status: Active/Cancel button - unchanged) ...
     is_active = teacher_details.get("is_active", True)
     status_text = admin_lang["status_active"] if is_active else admin_lang["status_cancelled"]
-    st.write(is_active)
     if is_active:
         st.success(f"Status: {status_text}")
     else:
