@@ -1,4 +1,4 @@
-+# Required library: pip install googletrans==4.0.0-rc1 streamlit pandas
+# Required library: pip install googletrans==4.0.0-rc1 streamlit pandas
 # Add googletrans==4.0.0-rc1 and pandas to your requirements.txt
 
 import streamlit as st
@@ -491,7 +491,7 @@ if request_id == "admin":
 
 elif request_id == "teacher":
     if st.session_state.get("teacher_logged_in"):
-        #_ = teacher_dashboard()  # Assign return value to _
+        _ = teacher_dashboard()  # Assign return value to _
     else:
         _ = teacher_login_page() # Assign return value to _
 
