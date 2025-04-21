@@ -257,62 +257,180 @@ def admin_route():
     st.markdown("---")
     st.subheader("Manage Registered Students")
     students_list = []
-    for user_id, name in load_data(USER_DB_PATH).items(): students_list.append({"Encrypted ID": user_id, "Name": name})
-    if not students_list: students_df = pd.DataFrame(columns=["Encrypted ID", "Name"])
-    else: students_df = pd.DataFrame(students_list)
-    edited_students_df = st.data_editor(students_df, num_rows="dynamic", key="student_editor", column_config={ "Encrypted ID": st.column_config.TextColumn("Encrypted ID", disabled=True), "Name": st.column_config.TextColumn("Student Name", required=True) }, use_container_width=True)
+    for user_id, user_info in load_data(USER_DB_PATH).items():
+        if isinstance(user_info, dict):
+            students_list.append({
+                "Encrypted ID": user_id,
+                "Name": user_info.get("name", ""),
+                "Grade": user_info.get("grade", ""),
+                "Location": user_info.get("location", ""),
+                "Level": user_info.get("level", "")
+            })
+        else:
+            # Old format, only name
+            students_list.append({
+                "Encrypted ID": user_id,
+                "Name": user_info,
+                "Grade": "",
+                "Location": "",
+                "Level": ""
+            })
+    if not students_list:
+        students_df = pd.DataFrame(columns=["Encrypted ID", "Name", "Grade", "Location", "Level"])
+    else:
+        students_df = pd.DataFrame(students_list)
+    edited_students_df = st.data_editor(
+        students_df,
+        num_rows="dynamic",
+        key="student_editor",
+        column_config={
+            "Encrypted ID": st.column_config.TextColumn("Encrypted ID", disabled=True),
+            "Name": st.column_config.TextColumn("Student Name", required=True),
+            "Grade": st.column_config.TextColumn("Grade"),
+            "Location": st.column_config.TextColumn("Location"),
+            "Level": st.column_config.TextColumn("Level")
+        },
+        use_container_width=True
+    )
     if st.button("Save Changes to Students"):
-        original_ids = set(students_df["Encrypted ID"]); edited_ids = set(edited_students_df["Encrypted ID"]); deleted_ids = original_ids - edited_ids
+        original_ids = set(students_df["Encrypted ID"])
+        edited_ids = set(edited_students_df["Encrypted ID"])
+        deleted_ids = original_ids - edited_ids
         user_db_before_del = load_data(USER_DB_PATH)
-        deleted_student_names = {user_db_before_del.get(id) for id in deleted_ids if user_db_before_del.get(id)}
-        new_user_database = {}; error_occurred = False
+        deleted_student_names = set()
+        for user_id in deleted_ids:
+            user_info = user_db_before_del.get(user_id)
+            if isinstance(user_info, str):
+                deleted_student_names.add(user_info)
+            elif isinstance(user_info, dict):
+                deleted_student_names.add(user_info.get("name", ""))
+        new_user_database = {}
+        error_occurred = False
+        name_changes = {}  # old_name -> new_name
         for index, row in edited_students_df.iterrows():
-            user_id, name = row["Encrypted ID"], row["Name"]
-            if pd.isna(name) or str(name).strip() == "": st.error(f"Row {index+1}: Name empty."); error_occurred = True; continue
-            if pd.isna(user_id): st.error(f"Row {index+1}: ID missing."); error_occurred = True; continue
-            new_user_database[user_id] = str(name).strip()
+            user_id = row["Encrypted ID"]
+            name = row["Name"]
+            grade = row["Grade"]
+            location = row["Location"]
+            level = row["Level"]
+            if pd.isna(name) or str(name).strip() == "":
+                st.error(f"Row {index+1}: Name empty.")
+                error_occurred = True
+                continue
+            if pd.isna(user_id):
+                st.error(f"Row {index+1}: ID missing.")
+                error_occurred = True
+                continue
+            clean_name = str(name).strip()
+            clean_grade = str(grade).strip() if pd.notna(grade) else ""
+            clean_location = str(location).strip() if pd.notna(location) else ""
+            clean_level = str(level).strip() if pd.notna(level) else ""
+            new_user_database[user_id] = {
+                "name": clean_name,
+                "grade": clean_grade,
+                "location": clean_location,
+                "level": clean_level
+            }
+            # Check for name change
+            old_user_info = user_db_before_del.get(user_id)
+            if old_user_info:
+                old_name = old_user_info if isinstance(old_user_info, str) else old_user_info.get("name", "")
+                if old_name != clean_name:
+                    name_changes[old_name] = clean_name
         if not error_occurred:
             try:
-                save_data(USER_DB_PATH, new_user_database); user_database = new_user_database
+                save_data(USER_DB_PATH, new_user_database)
+                user_database = new_user_database
                 st.success("Student data updated!")
-                if deleted_student_names: st.info(f"Removed students: {', '.join(deleted_student_names)}")
-                enrollments_updated = False; current_enrollments = load_data(ENROLLMENTS_DB_PATH)
-                new_enrollments_after_delete = {}
+                if deleted_student_names:
+                    st.info(f"Removed students: {', '.join(deleted_student_names)}")
+                # Update enrollments for deleted students and name changes
+                current_enrollments = load_data(ENROLLMENTS_DB_PATH)
+                new_enrollments = current_enrollments.copy()
+                enrollments_updated = False
+                # Handle deletions
                 for teacher, studs in current_enrollments.items():
                     cleaned_list = [s for s in studs if s not in deleted_student_names]
-                    if cleaned_list: new_enrollments_after_delete[teacher] = cleaned_list
-                    if len(cleaned_list) != len(studs): enrollments_updated = True
+                    if cleaned_list:
+                        new_enrollments[teacher] = cleaned_list
+                    else:
+                        del new_enrollments[teacher]
+                    if len(cleaned_list) != len(studs):
+                        enrollments_updated = True
+                # Handle name changes
+                if name_changes:
+                    for teacher, studs in new_enrollments.items():
+                        new_studs = [name_changes.get(s, s) for s in studs]
+                        if new_studs != studs:
+                            new_enrollments[teacher] = new_studs
+                            enrollments_updated = True
                 if enrollments_updated:
-                    save_data(ENROLLMENTS_DB_PATH, new_enrollments_after_delete); enrollments = new_enrollments_after_delete
-                    st.info("Removed deleted students from enrollments.")
+                    save_data(ENROLLMENTS_DB_PATH, new_enrollments)
+                    enrollments = new_enrollments
+                    st.info("Updated enrollments for deleted students or name changes.")
                 st.rerun()
-            except Exception as e: st.error(f"Failed to save student data: {e}")
-        else: st.warning("Fix errors before saving student changes.")
+            except Exception as e:
+                st.error(f"Failed to save student data: {e}")
+        else:
+            st.warning("Fix errors before saving student changes.")
 
     st.markdown("---")
     st.subheader("Teacher-Student Assignments")
-    assignments = []; current_enrollments = load_data(ENROLLMENTS_DB_PATH)
+    assignments = []
+    current_enrollments = load_data(ENROLLMENTS_DB_PATH)
     for teacher, students in current_enrollments.items():
-        for student in students: assignments.append({"Teacher": teacher, "Student": student})
-    if not assignments: assignments_df = pd.DataFrame(columns=["Teacher", "Student"])
-    else: assignments_df = pd.DataFrame(assignments)
-    available_teachers = list(load_data(TEACHERS_DB_PATH).keys()); available_students = list(load_data(USER_DB_PATH).values())
-    edited_assignments = st.data_editor(assignments_df, num_rows="dynamic", key="assignment_editor", column_config={ "Teacher": st.column_config.SelectboxColumn("Teacher", options=available_teachers, required=True), "Student": st.column_config.SelectboxColumn("Student", options=available_students, required=True) }, use_container_width=True)
+        for student in students:
+            assignments.append({"Teacher": teacher, "Student": student})
+    if not assignments:
+        assignments_df = pd.DataFrame(columns=["Teacher", "Student"])
+    else:
+        assignments_df = pd.DataFrame(assignments)
+    available_teachers = list(load_data(TEACHERS_DB_PATH).keys())
+    user_db = load_data(USER_DB_PATH)
+    available_students = [u["name"] if isinstance(u, dict) else u for u in user_db.values()]
+    edited_assignments = st.data_editor(
+        assignments_df,
+        num_rows="dynamic",
+        key="assignment_editor",
+        column_config={
+            "Teacher": st.column_config.SelectboxColumn("Teacher", options=available_teachers, required=True),
+            "Student": st.column_config.SelectboxColumn("Student", options=available_students, required=True)
+        },
+        use_container_width=True
+    )
     if st.button("Save Changes to Assignments"):
-        new_enrollments = {}; error_occurred = False; processed_pairs = set()
+        new_enrollments = {}
+        error_occurred = False
+        processed_pairs = set()
         for index, row in edited_assignments.iterrows():
             teacher, student = row["Teacher"], row["Student"]
-            if pd.isna(teacher) or str(teacher).strip() == "": st.error(f"Row {index+1}: Teacher empty."); error_occurred = True; continue
-            if pd.isna(student) or str(student).strip() == "": st.error(f"Row {index+1}: Student empty."); error_occurred = True; continue
+            if pd.isna(teacher) or str(teacher).strip() == "":
+                st.error(f"Row {index+1}: Teacher empty.")
+                error_occurred = True
+                continue
+            if pd.isna(student) or str(student).strip() == "":
+                st.error(f"Row {index+1}: Student empty.")
+                error_occurred = True
+                continue
             teacher, student = str(teacher).strip(), str(student).strip()
-            if (teacher, student) in processed_pairs: st.warning(f"Row {index+1}: Duplicate assignment {student} to {teacher}."); continue
+            if (teacher, student) in processed_pairs:
+                st.warning(f"Row {index+1}: Duplicate assignment {student} to {teacher}.")
+                continue
             processed_pairs.add((teacher, student))
-            if teacher not in new_enrollments: new_enrollments[teacher] = []
-            if student not in new_enrollments[teacher]: new_enrollments[teacher].append(student)
+            if teacher not in new_enrollments:
+                new_enrollments[teacher] = []
+            if student not in new_enrollments[teacher]:
+                new_enrollments[teacher].append(student)
         if not error_occurred:
-            try: save_data(ENROLLMENTS_DB_PATH, new_enrollments); enrollments = new_enrollments; st.success("Assignments updated!"); st.rerun()
-            except Exception as e: st.error(f"Failed to save assignments: {e}")
-        else: st.warning("Fix errors before saving assignments.")
+            try:
+                save_data(ENROLLMENTS_DB_PATH, new_enrollments)
+                enrollments = new_enrollments
+                st.success("Assignments updated!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Failed to save assignments: {e}")
+        else:
+            st.warning("Fix errors before saving assignments.")
 
 # Bilingual Texts
 texts = {
@@ -341,7 +459,10 @@ texts = {
         "unlimited": "Unlimited",
         "grade_select_label": "Select Grade",
         "all_grades": "All",
-        "refresh":"refresh"
+        "refresh": "refresh",
+        "register_grade_label": "Current Grade",
+        "register_location_label": "Location",
+        "register_level_label": "Level"
     },
     "中文": {
         "page_title": "PLE Youth 教师搜索与注册",
@@ -368,7 +489,10 @@ texts = {
         "unlimited": "无限制",
         "grade_select_label": "选择年级",
         "all_grades": "所有年级",
-        "refresh":"刷新"
+        "refresh": "刷新",
+        "register_grade_label": "当前年级",
+        "register_location_label": "居住地",
+        "register_level_label": "水平"
     }
 }
 
@@ -384,8 +508,10 @@ if not plain_id:
     st.stop()
 
 request_id = plain_id.lower()
-if request_id == "admin": admin_route()
-elif request_id == "teacher": teacher_login_page()
+if request_id == "admin":
+    admin_route()
+elif request_id == "teacher":
+    teacher_login_page()
 else:
     selected_language = st.sidebar.selectbox("Language / 语言", options=["English", "中文"], key="lang_select")
     lang = texts[selected_language]
@@ -397,17 +523,34 @@ else:
     enrollments = load_data(ENROLLMENTS_DB_PATH)
 
     if secure_id not in user_database:
-        st.title(lang["page_title"]); st.write(lang["register_prompt"])
+        st.title(lang["page_title"])
+        st.write(lang["register_prompt"])
         new_user_name = st.text_input("Student's English Full Name / 学生英文全名", key="register_input")
+        new_user_grade = st.text_input(lang["register_grade_label"], key="register_grade")
+        new_user_location = st.text_input(lang["register_location_label"], key="register_location")
+        new_user_level = st.text_input(lang["register_level_label"], key="register_level")
         if st.button(lang["register_button"], key="register_btn"):
             if new_user_name and new_user_name.strip():
-                clean_name = new_user_name.strip(); user_database[secure_id] = clean_name
+                clean_name = new_user_name.strip()
+                clean_grade = new_user_grade.strip() if new_user_grade else ""
+                clean_location = new_user_location.strip() if new_user_location else ""
+                clean_level = new_user_level.strip() if new_user_level else ""
+                user_database[secure_id] = {
+                    "name": clean_name,
+                    "grade": clean_grade,
+                    "location": clean_location,
+                    "level": clean_level
+                }
                 save_data(USER_DB_PATH, user_database)
-                st.success(f"Registered {clean_name}! Reloading."); st.balloons(); st.rerun()
-            else: st.error(lang["name_required"])
+                st.success(f"Registered {clean_name}! Reloading.")
+                st.balloons()
+                st.rerun()
+            else:
+                st.error(lang["name_required"])
         st.stop()
 
-    user_name = user_database.get(secure_id, "Unknown User")
+    user_info = user_database.get(secure_id)
+    user_name = user_info["name"] if isinstance(user_info, dict) else user_info if user_info else "Unknown User"
     st.sidebar.write(lang["logged_in"].format(name=user_name))
     st.title(lang["page_title"])
     if st.button(lang["refresh"]):
