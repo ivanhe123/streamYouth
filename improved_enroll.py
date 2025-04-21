@@ -462,7 +462,7 @@ texts = {
         "refresh": "refresh",
         "register_grade_label": "Current Grade",
         "register_location_label": "Location",
-        "register_level_label": "Level"
+        "register_level_label": "RAZ Level"
     },
     "中文": {
         "page_title": "PLE Youth 教师搜索与注册",
@@ -492,7 +492,7 @@ texts = {
         "refresh": "刷新",
         "register_grade_label": "当前年级",
         "register_location_label": "居住地",
-        "register_level_label": "水平"
+        "register_level_label": "RAZ 等级"
     }
 }
 
