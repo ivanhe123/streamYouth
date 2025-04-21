@@ -456,7 +456,23 @@ def admin_route():
             except Exception as e: st.error(f"Failed to save assignments: {e}")
         else: st.warning("Fix errors before saving assignments.")
 
-
+def teacher_login_page():
+    if st.session_state.get("teacher_logged_in"): teacher_dashboard(); st.stop()
+    # Use hardcoded English for this page for now
+    st.title("Teacher Portal Login")
+    entered_id = st.text_input("Enter your Teacher ID:", type="password", key="teacher_id_input")
+    if st.button("Login", key="teacher_login_submit"):
+        if not entered_id: st.warning("Please enter ID.")
+        else:
+            teacher_name, teacher_details = validate_teacher_id(entered_id) # Uses validate_teacher_id (defined above)
+            if teacher_name:
+                st.session_state.teacher_logged_in = True
+                st.session_state.teacher_id = entered_id
+                st.session_state.teacher_name = teacher_name
+                st.success(f"Welcome, {teacher_name}!");
+                # Calls teacher_dashboard (defined above)
+                st.rerun()
+            else: st.error("Invalid Teacher ID.")
 # --- Main Application Logic ---
 params = st.query_params
 plain_id = params.get("id", ""); plain_id = plain_id[0] if isinstance(plain_id, list) else plain_id
