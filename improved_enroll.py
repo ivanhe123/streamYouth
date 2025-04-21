@@ -180,11 +180,15 @@ def teacher_dashboard():
     # ... (Class Status: Active/Cancel button - unchanged) ...
     is_active = teacher_details.get("is_active", True)
     status_text = admin_lang["status_active"] if is_active else admin_lang["status_cancelled"]
-    st.success(f"Status: {status_text}") if is_active else st.warning(f"Status: {status_text}")
+    #st.success(f"Status: {status_text}") if is_active else st.warning(f"Status: {status_text}")
     btn_label = admin_lang["cancel_class_button"] if is_active else admin_lang["reactivate_class_button"]
     btn_key = "cancel_class_btn" if is_active else "reactivate_class_btn"
     new_status = not is_active
-    
+    if st.button(btn_label, key=btn_key):
+            current_teachers_db[teacher_name]["is_active"] = new_status
+            save_data(TEACHERS_DB_PATH, current_teachers_db)
+            teachers_database_global = current_teachers_db
+            st.success("Class status updated."); st.rerun()
 
     st.markdown("---")
     st.subheader(admin_lang["class_info_header"])
