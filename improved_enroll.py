@@ -11,6 +11,24 @@ import uuid
 import time
 from googletrans import Translator, LANGUAGES # Using googletrans (unofficial)
 
+# --- Translation Setup (ONLY for dynamic content) ---
+try:
+    translator = Translator(user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3')
+except Exception as e:
+    st.error(f"Translator init failed: {e}. Location/Subject translation may fail.")
+    translator = None
+
+@st.cache_data(ttl=3600)
+def translate_dynamic_text(_translator, text, target_lang_code):
+    if not _translator or not text or target_lang_code == 'en': return text
+    if target_lang_code == 'zh': target_lang_code = 'zh-cn'
+    if target_lang_code not in LANGUAGES and target_lang_code not in ['zh-cn', 'zh-tw']: return text
+    try:
+        translated = _translator.translate(text, dest=target_lang_code); return translated.text
+    except Exception as e:
+        print(f"WARN: Dyn Translate Error '{text}' to {target_lang_code}: {e}"); return text
+# --- End Translation Setup ---
+
 # --- Configuration ---
 st.set_page_config(layout="wide") # Use wide layout for admin editors
 st.markdown("""<style>.st-emotion-cache-1p1m4ay{ visibility:hidden }</style>""", unsafe_allow_html=True)
@@ -160,21 +178,15 @@ def teacher_dashboard():
 
     st.subheader(admin_lang["class_status_header"])
     # ... (Class Status: Active/Cancel button - unchanged) ...
-     is_active = teacher_details.get("is_active", True)
+    is_active = teacher_details.get("is_active", True)
     status_text = admin_lang["status_active"] if is_active else admin_lang["status_cancelled"]
     st.success(f"Status: {status_text}") if is_active else st.warning(f"Status: {status_text}")
     btn_label = admin_lang["cancel_class_button"] if is_active else admin_lang["reactivate_class_button"]
     btn_key = "cancel_class_btn" if is_active else "reactivate_class_btn"
     new_status = not is_active
-    if st.button(btn_label, key=btn_key):
-        current_teachers_db[teacher_name]["is_active"] = new_status
-        save_data(TEACHERS_DB_PATH, current_teachers_db)
-        teachers_database_global = current_teachers_db
-        st.success("Class status updated."); st.rerun()
-
     
+
     st.markdown("---")
-   
     st.subheader(admin_lang["class_info_header"])
     with st.form("edit_teacher_form"):
         st.write("**Class Details & Limit**")
