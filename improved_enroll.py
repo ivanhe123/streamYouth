@@ -186,7 +186,8 @@ def teacher_dashboard():
     new_status = not is_active
     if st.button(btn_label, key=btn_key):
             current_teachers_db[teacher_name]["is_active"] = new_status
-            save_data(TEACHERS_DB_PATH, current_teachers_db); teachers_database_global = current_teachers_db
+            save_data(TEACHERS_DB_PATH, current_teachers_db)
+            teachers_database_global = current_teachers_db
             st.success("Class status updated."); st.rerun()
 
     st.markdown("---")
@@ -457,20 +458,25 @@ def admin_route():
         else: st.warning("Fix errors before saving assignments.")
 
 def teacher_login_page():
-    if st.session_state.get("teacher_logged_in"): teacher_dashboard(); st.stop()
+    # REMOVE THIS BLOCK - Check is now done in the main router
+    # if st.session_state.get("teacher_logged_in"):
+    #    teacher_dashboard()
+    #    st.stop()
+
     # Use hardcoded English for this page for now
     st.title("Teacher Portal Login")
     entered_id = st.text_input("Enter your Teacher ID:", type="password", key="teacher_id_input")
     if st.button("Login", key="teacher_login_submit"):
         if not entered_id: st.warning("Please enter ID.")
         else:
-            teacher_name, teacher_details = validate_teacher_id(entered_id) # Uses validate_teacher_id (defined above)
+            teacher_name, teacher_details = validate_teacher_id(entered_id) # Uses validate_teacher_id
             if teacher_name:
+                # Set session state
                 st.session_state.teacher_logged_in = True
                 st.session_state.teacher_id = entered_id
                 st.session_state.teacher_name = teacher_name
-                st.success(f"Welcome, {teacher_name}!");
-                # Calls teacher_dashboard (defined above)
+                st.success(f"Welcome, {teacher_name}!")
+                # Rerun will now hit the routing logic which will call teacher_dashboard directly
                 st.rerun()
             else: st.error("Invalid Teacher ID.")
 # --- Main Application Logic ---
