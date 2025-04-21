@@ -1,444 +1,33 @@
-import streamlit as st
-import json
-import os
-import hmac
-import hashlib
-import pandas as pd
-import uuid
+# Sample location data (replace with actual data or API)
+# --- Added more comprehensive sample data ---
+location_data = {
+    "USA": {
+        "California": ["Los Angeles", "San Francisco", "San Diego", "Sacramento"],
+        "New York": ["New York City", "Buffalo", "Rochester", "Albany"],
+        "Texas": ["Houston", "Dallas", "Austin", "San Antonio"]
+    },
+    "China": {
+        "Beijing Municipality": ["Beijing"],
+        "Shanghai Municipality": ["Shanghai"],
+        "Guangdong Province": ["Guangzhou", "Shenzhen", "Dongguan"],
+        "Zhejiang Province": ["Hangzhou", "Ningbo", "Wenzhou"]
+    },
+    "Canada": {
+        "Ontario": ["Toronto", "Ottawa", "Mississauga", "Hamilton"],
+        "Quebec": ["Montreal", "Quebec City", "Laval", "Gatineau"],
+        "British Columbia": ["Vancouver", "Surrey", "Burnaby", "Richmond"]
+    },
+    "India": {
+        "Maharashtra": ["Mumbai", "Pune", "Nagpur"],
+        "Delhi": ["New Delhi"],
+        "Karnataka": ["Bangalore", "Mysore", "Hubli"]
+    }
+    # Add more countries, states/provinces, and cities as needed
+}
 
-# File Database Helper Functions
-st.markdown("""<style>.st-emotion-cache-1p1m4ay{ visibility:hidden }</style>""", unsafe_allow_html=True)
-USER_DB_PATH = "user_db.json"
-ENROLLMENTS_DB_PATH = "enrollments.json"
-TEACHERS_DB_PATH = "teachers.json"
+# ... (keep all your existing helper functions, database loading, etc.) ...
 
-def load_data(path):
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            try:
-                content = f.read()
-                if not content: return {}
-                return json.loads(content)
-            except json.JSONDecodeError:
-                st.error(f"Error decoding JSON from {path}.")
-                return {}
-    return {}
-
-def save_data(path, data):
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception as e: st.error(f"Error saving data to {path}: {e}")
-
-# Load file databases
-user_database = load_data(USER_DB_PATH)
-enrollments = load_data(ENROLLMENTS_DB_PATH)
-teachers_database = load_data(TEACHERS_DB_PATH)
-
-# Encryption & ID Generation
-if "secret_key" not in st.secrets: st.error("`secret_key` missing."); st.stop()
-SECRET_KEY = st.secrets["secret_key"]
-def encrypt_id(plain_id: str) -> str: return hmac.new(SECRET_KEY.encode(), plain_id.encode(), hashlib.sha256).hexdigest()
-def generate_teacher_id(): return uuid.uuid4().hex
-
-# Validate Teacher ID
-def validate_teacher_id(entered_id: str):
-    current_teachers_db = load_data(TEACHERS_DB_PATH)
-    for name, details in current_teachers_db.items():
-        if details.get("id") == entered_id: return name, details
-    return None, None
-
-# Teacher Dashboard
-def teacher_dashboard():
-    global teachers_database, enrollments
-    st.title(f"Teacher Dashboard: {st.session_state.teacher_name}")
-    if st.button("Logout", key="teacher_logout"):
-        del st.session_state.teacher_logged_in, st.session_state.teacher_id, st.session_state.teacher_name
-        st.success("Logged out."); st.rerun()
-    if st.button("Refresh"):
-        st.rerun()
-    st.markdown("---")
-
-    teacher_name = st.session_state.teacher_name
-    current_teachers_db = load_data(TEACHERS_DB_PATH)
-    teacher_details = current_teachers_db.get(teacher_name)
-    if not teacher_details: st.error("Teacher data not found."); st.stop()
-
-    st.subheader("Manage Class Settings")
-    with st.form("edit_teacher_form"):
-        st.write("**Class Information**")
-        new_subject_en = st.text_input("Subject (English)", value=teacher_details.get("subject_en", ""))
-        new_subject_zh = st.text_input("Subject (Chinese)", value=teacher_details.get("subject_zh", ""))
-        new_grade = st.text_input("Grade", value=teacher_details.get("grade", ""))
-        st.write("**Enrollment Limit**")
-        current_cap = teacher_details.get("enrollment_cap")
-        new_cap = st.number_input("Maximum Students (leave blank or 0 for unlimited)", min_value=0, value=current_cap if current_cap is not None else None, step=1, format="%d", key="teacher_edit_cap")
-        submitted = st.form_submit_button("Save Settings")
-        if submitted:
-            processed_cap = int(new_cap) if new_cap is not None and new_cap > 0 else None
-            current_teachers_db[teacher_name].update({
-                "subject_en": new_subject_en.strip(),
-                "subject_zh": new_subject_zh.strip(),
-                "grade": new_grade.strip(),
-                "enrollment_cap": processed_cap
-            })
-            save_data(TEACHERS_DB_PATH, current_teachers_db)
-            teachers_database = current_teachers_db
-            st.success("Settings updated successfully!")
-            st.rerun()
-
-    st.markdown("---")
-    st.subheader("Class Status")
-    is_active = teacher_details.get("is_active", True)
-    status_text = "Active (Students can enroll)" if is_active else "Cancelled (Students cannot enroll)"
-    status_func = st.success if is_active else st.warning
-    status_func(f"Status: {status_text}")
-    if is_active:
-        if st.button("Cancel Class (Hide from Enrollment)", key="cancel_class_btn"):
-            current_teachers_db[teacher_name]["is_active"] = False
-            save_data(TEACHERS_DB_PATH, current_teachers_db); teachers_database = current_teachers_db
-            st.warning("Class cancelled."); st.rerun()
-    else:
-        if st.button("Reactivate Class (Allow Enrollment)", key="reactivate_class_btn"):
-            current_teachers_db[teacher_name]["is_active"] = True
-            save_data(TEACHERS_DB_PATH, current_teachers_db); teachers_database = current_teachers_db
-            st.success("Class reactivated."); st.rerun()
-
-    st.markdown("---")
-    st.subheader("Enrollment Overview")
-    current_enrollments = load_data(ENROLLMENTS_DB_PATH)
-    enrolled_students = current_enrollments.get(teacher_name, [])
-    enrollment_count = len(enrolled_students)
-    display_cap = teacher_details.get("enrollment_cap", "Unlimited")
-    if isinstance(display_cap, int) and display_cap <= 0: display_cap = "Unlimited"
-    st.metric("Current Enrollment", f"{enrollment_count} / {display_cap}")
-    if enrolled_students:
-        st.write("**Enrolled Students:**")
-        for i, student_name in enumerate(enrolled_students, 1):
-             st.markdown(f"{i}. {student_name}")
-    else:
-        st.info("No students are currently enrolled.")
-
-# Teacher Login Page
-def teacher_login_page():
-    if st.session_state.get("teacher_logged_in"): teacher_dashboard(); st.stop()
-    st.title("Teacher Portal Login")
-    entered_id = st.text_input("Enter your Teacher ID:", type="password", key="teacher_id_input")
-    if st.button("Login", key="teacher_login_submit"):
-        if not entered_id: st.warning("Please enter ID.")
-        else:
-            teacher_name, teacher_details = validate_teacher_id(entered_id)
-            if teacher_name and teacher_details:
-                st.session_state.teacher_logged_in = True
-                st.session_state.teacher_id = entered_id
-                st.session_state.teacher_name = teacher_name
-                st.success(f"Welcome, {teacher_name}!"); st.rerun()
-            else: st.error("Invalid Teacher ID.")
-
-# Admin Route
-def admin_route():
-    global user_database, enrollments, teachers_database
-    st.title("Admin Dashboard")
-    if "passcode" not in st.secrets: st.error("Admin `passcode` missing."); st.stop()
-    admin_password = st.text_input("Enter Admin Password:", type="password", key="admin_pw")
-    if not admin_password: st.warning("Please enter password."); st.stop()
-    if admin_password != st.secrets["passcode"]: st.error("Incorrect password."); st.stop()
-    st.success("Access granted.")
-    if st.button("Refresh Data from Files"):
-        user_database, enrollments, teachers_database = map(load_data, [USER_DB_PATH, ENROLLMENTS_DB_PATH, TEACHERS_DB_PATH])
-        st.rerun()
-    st.markdown("---")
-
-    st.subheader("Manage Teachers")
-    st.markdown("Add/edit details. Set cap=0 or leave blank for unlimited. Use trash icon to remove.")
-    teachers_list = []
-    needs_saving_defaults = False
-    temp_teachers_db = load_data(TEACHERS_DB_PATH)
-    for name, details in temp_teachers_db.items():
-        if "id" not in details: details["id"] = generate_teacher_id(); needs_saving_defaults = True
-        if "is_active" not in details: details["is_active"] = True; needs_saving_defaults = True
-        if "enrollment_cap" not in details: details["enrollment_cap"] = None; needs_saving_defaults = True
-        teachers_list.append({
-            "Teacher ID": details["id"],
-            "Teacher Name": name,
-            "Subject (English)": details.get("subject_en", ""),
-            "Subject (Chinese)": details.get("subject_zh", ""),
-            "Grade": details.get("grade", ""),
-            "Is Active": details.get("is_active"),
-            "Enrollment Cap": details.get("enrollment_cap")
-        })
-    if needs_saving_defaults:
-        save_data(TEACHERS_DB_PATH, temp_teachers_db)
-        teachers_database = temp_teachers_db
-        st.info("Applied default values (ID/Status/Cap) where missing. Data saved.")
-    if not teachers_list:
-        teachers_df = pd.DataFrame(columns=["Teacher ID", "Teacher Name", "Subject (English)", "Subject (Chinese)", "Grade", "Is Active", "Enrollment Cap"])
-    else:
-        teachers_df = pd.DataFrame(teachers_list)
-    edited_teachers_df = st.data_editor(
-        teachers_df,
-        num_rows="dynamic",
-        key="teacher_editor",
-        column_config={
-             "Teacher ID": st.column_config.TextColumn("ID", disabled=True, width="small"),
-             "Teacher Name": st.column_config.TextColumn("Name", required=True),
-             "Subject (English)": st.column_config.TextColumn("Subject EN"),
-             "Subject (Chinese)": st.column_config.TextColumn("Subject ZH"),
-             "Grade": st.column_config.TextColumn("Grade", width="small"),
-             "Is Active": st.column_config.CheckboxColumn("Active?", disabled=True, width="small"),
-             "Enrollment Cap": st.column_config.NumberColumn("Cap", help="Max students. Leave blank or 0 for unlimited.", min_value=0, step=1, format="%d", width="small")
-        },
-        column_order=("Teacher ID", "Teacher Name", "Enrollment Cap", "Subject (English)", "Subject (Chinese)", "Grade", "Is Active"),
-        use_container_width=True
-    )
-    if st.button("Save Changes to Teachers"):
-        original_teachers_data = teachers_database.copy()
-        new_teachers_database = {}
-        error_occurred = False; seen_names = set(); processed_ids = set()
-        for index, row in edited_teachers_df.iterrows():
-            name = row["Teacher Name"]
-            teacher_id = row["Teacher ID"]
-            enrollment_cap_input = row["Enrollment Cap"]
-            if pd.isna(teacher_id) or str(teacher_id).strip() == "":
-                is_new_teacher = True; teacher_id = generate_teacher_id()
-            else:
-                is_new_teacher = True
-                for _, d in original_teachers_data.items():
-                    if d.get("id") == teacher_id: is_new_teacher = False; break
-            if pd.isna(name) or str(name).strip() == "": st.error(f"Row {index+1}: Name empty."); error_occurred = True; continue
-            name = str(name).strip()
-            if name in seen_names: st.error(f"Row {index+1}: Duplicate Name '{name}'."); error_occurred = True; continue
-            if not is_new_teacher:
-                 for en, ed in original_teachers_data.items():
-                     if ed.get("id") != teacher_id and en == name: st.error(f"Row {index+1}: Name '{name}' used."); error_occurred = True; break
-                 if error_occurred: continue
-            seen_names.add(name)
-            processed_ids.add(teacher_id)
-            processed_cap = None
-            if pd.notna(enrollment_cap_input) and enrollment_cap_input > 0:
-                 try:
-                     processed_cap = int(enrollment_cap_input)
-                 except (ValueError, TypeError):
-                     st.error(f"Row {index+1}: Invalid number format for Cap '{enrollment_cap_input}'.")
-                     error_occurred = True
-                     continue
-            original_details = next((d for _, d in original_teachers_data.items() if d.get("id") == teacher_id), None)
-            current_is_active = original_details.get("is_active", True) if original_details else True
-            new_teachers_database[name] = {
-                "id": teacher_id,
-                "subject_en": str(row["Subject (English)"]) if pd.notna(row["Subject (English)"]) else "",
-                "subject_zh": str(row["Subject (Chinese)"]) if pd.notna(row["Subject (Chinese)"]) else "",
-                "grade": str(row["Grade"]) if pd.notna(row["Grade"]) else "",
-                "is_active": current_is_active,
-                "enrollment_cap": processed_cap
-            }
-        deleted_teacher_names = [on for on, od in original_teachers_data.items() if od.get("id") not in processed_ids]
-        if not error_occurred:
-            try:
-                save_data(TEACHERS_DB_PATH, new_teachers_database)
-                teachers_database = new_teachers_database
-                st.success("Teacher data updated!")
-                if deleted_teacher_names:
-                    enrollments_updated = False
-                    current_enrollments = load_data(ENROLLMENTS_DB_PATH)
-                    new_enrollments_after_teacher_delete = current_enrollments.copy()
-                    for removed_teacher_name in deleted_teacher_names:
-                        if removed_teacher_name in new_enrollments_after_teacher_delete:
-                            del new_enrollments_after_teacher_delete[removed_teacher_name]
-                            enrollments_updated = True
-                            st.warning(f"Removed enrollments for deleted teacher: {removed_teacher_name}")
-                    if enrollments_updated:
-                         save_data(ENROLLMENTS_DB_PATH, new_enrollments_after_teacher_delete)
-                         enrollments = new_enrollments_after_teacher_delete
-                st.rerun()
-            except Exception as e: st.error(f"Failed to save teacher data: {e}")
-        else: st.warning("Fix errors before saving teacher changes.")
-
-    st.markdown("---")
-    st.subheader("Manage Registered Students")
-    students_list = []
-    for user_id, user_info in load_data(USER_DB_PATH).items():
-        if isinstance(user_info, dict):
-            students_list.append({
-                "Encrypted ID": user_id,
-                "Name": user_info.get("name", ""),
-                "Grade": user_info.get("grade", ""),
-                "Country": user_info.get("country", ""),
-                "State/Province": user_info.get("state", ""),
-                "City": user_info.get("city", "")
-            })
-        else:
-            # Old format, only name
-            students_list.append({
-                "Encrypted ID": user_id,
-                "Name": user_info,
-                "Grade": "",
-                "Country": "",
-                "State/Province": "",
-                "City": ""
-            })
-    if not students_list:
-        students_df = pd.DataFrame(columns=["Encrypted ID", "Name", "Grade", "Country", "State/Province", "City"])
-    else:
-        students_df = pd.DataFrame(students_list)
-    edited_students_df = st.data_editor(
-        students_df,
-        num_rows="dynamic",
-        key="student_editor",
-        column_config={
-            "Encrypted ID": st.column_config.TextColumn("Encrypted ID", disabled=True),
-            "Name": st.column_config.TextColumn("Student Name", required=True),
-            "Grade": st.column_config.TextColumn("Grade"),
-            "Country": st.column_config.TextColumn("Country"),
-            "State/Province": st.column_config.TextColumn("State/Province"),
-            "City": st.column_config.TextColumn("City")
-        },
-        use_container_width=True
-    )
-    if st.button("Save Changes to Students"):
-        original_ids = set(students_df["Encrypted ID"])
-        edited_ids = set(edited_students_df["Encrypted ID"])
-        deleted_ids = original_ids - edited_ids
-        user_db_before_del = load_data(USER_DB_PATH)
-        deleted_student_names = set()
-        for user_id in deleted_ids:
-            user_info = user_db_before_del.get(user_id)
-            if isinstance(user_info, str):
-                deleted_student_names.add(user_info)
-            elif isinstance(user_info, dict):
-                deleted_student_names.add(user_info.get("name", ""))
-        new_user_database = {}
-        error_occurred = False
-        name_changes = {}  # old_name -> new_name
-        for index, row in edited_students_df.iterrows():
-            user_id = row["Encrypted ID"]
-            name = row["Name"]
-            grade = row["Grade"]
-            country = row["Country"]
-            state = row["State/Province"]
-            city = row["City"]
-            if pd.isna(name) or str(name).strip() == "":
-                st.error(f"Row {index+1}: Name empty.")
-                error_occurred = True
-                continue
-            if pd.isna(user_id):
-                st.error(f"Row {index+1}: ID missing.")
-                error_occurred = True
-                continue
-            clean_name = str(name).strip()
-            clean_grade = str(grade).strip() if pd.notna(grade) else ""
-            clean_country = str(country).strip() if pd.notna(country) else ""
-            clean_state = str(state).strip() if pd.notna(state) else ""
-            clean_city = str(city).strip() if pd.notna(city) else ""
-            new_user_database[user_id] = {
-                "name": clean_name,
-                "grade": clean_grade,
-                "country": clean_country,
-                "state": clean_state,
-                "city": clean_city
-            }
-            # Check for name change
-            old_user_info = user_db_before_del.get(user_id)
-            if old_user_info:
-                old_name = old_user_info if isinstance(old_user_info, str) else old_user_info.get("name", "")
-                if old_name != clean_name:
-                    name_changes[old_name] = clean_name
-        if not error_occurred:
-            try:
-                save_data(USER_DB_PATH, new_user_database)
-                user_database = new_user_database
-                st.success("Student data updated!")
-                if deleted_student_names:
-                    st.info(f"Removed students: {', '.join(deleted_student_names)}")
-                # Update enrollments for deleted students and name changes
-                current_enrollments = load_data(ENROLLMENTS_DB_PATH)
-                new_enrollments = current_enrollments.copy()
-                enrollments_updated = False
-                # Handle deletions
-                for teacher, studs in current_enrollments.items():
-                    cleaned_list = [s for s in studs if s not in deleted_student_names]
-                    if cleaned_list:
-                        new_enrollments[teacher] = cleaned_list
-                    else:
-                        del new_enrollments[teacher]
-                    if len(cleaned_list) != len(studs):
-                        enrollments_updated = True
-                # Handle name changes
-                if name_changes:
-                    for teacher, studs in new_enrollments.items():
-                        new_studs = [name_changes.get(s, s) for s in studs]
-                        if new_studs != studs:
-                            new_enrollments[teacher] = new_studs
-                            enrollments_updated = True
-                if enrollments_updated:
-                    save_data(ENROLLMENTS_DB_PATH, new_enrollments)
-                    enrollments = new_enrollments
-                    st.info("Updated enrollments for deleted students or name changes.")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Failed to save student data: {e}")
-        else:
-            st.warning("Fix errors before saving student changes.")
-
-    st.markdown("---")
-    st.subheader("Teacher-Student Assignments")
-    assignments = []
-    current_enrollments = load_data(ENROLLMENTS_DB_PATH)
-    for teacher, students in current_enrollments.items():
-        for student in students:
-            assignments.append({"Teacher": teacher, "Student": student})
-    if not assignments:
-        assignments_df = pd.DataFrame(columns=["Teacher", "Student"])
-    else:
-        assignments_df = pd.DataFrame(assignments)
-    available_teachers = list(load_data(TEACHERS_DB_PATH).keys())
-    user_db = load_data(USER_DB_PATH)
-    available_students = [u["name"] if isinstance(u, dict) else u for u in user_db.values()]
-    edited_assignments = st.data_editor(
-        assignments_df,
-        num_rows="dynamic",
-        key="assignment_editor",
-        column_config={
-            "Teacher": st.column_config.SelectboxColumn("Teacher", options=available_teachers, required=True),
-            "Student": st.column_config.SelectboxColumn("Student", options=available_students, required=True)
-        },
-        use_container_width=True
-    )
-    if st.button("Save Changes to Assignments"):
-        new_enrollments = {}
-        error_occurred = False
-        processed_pairs = set()
-        for index, row in edited_assignments.iterrows():
-            teacher, student = row["Teacher"], row["Student"]
-            if pd.isna(teacher) or str(teacher).strip() == "":
-                st.error(f"Row {index+1}: Teacher empty.")
-                error_occurred = True
-                continue
-            if pd.isna(student) or str(student).strip() == "":
-                st.error(f"Row {index+1}: Student empty.")
-                error_occurred = True
-                continue
-            teacher, student = str(teacher).strip(), str(student).strip()
-            if (teacher, student) in processed_pairs:
-                st.warning(f"Row {index+1}: Duplicate assignment {student} to {teacher}.")
-                continue
-            processed_pairs.add((teacher, student))
-            if teacher not in new_enrollments:
-                new_enrollments[teacher] = []
-            if student not in new_enrollments[teacher]:
-                new_enrollments[teacher].append(student)
-        if not error_occurred:
-            try:
-                save_data(ENROLLMENTS_DB_PATH, new_enrollments)
-                enrollments = new_enrollments
-                st.success("Assignments updated!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Failed to save assignments: {e}")
-        else:
-            st.warning("Fix errors before saving assignments.")
-
-# Bilingual Texts
+# Bilingual Texts - Ensure these keys are present
 texts = {
     "English": {
         "page_title": "PLE Youth Enrollment",
@@ -466,13 +55,15 @@ texts = {
         "grade_select_label": "Select Grade",
         "all_grades": "All",
         "refresh": "refresh",
+        "register_name_label": "Student's English Full Name", # Added for clarity
         "register_grade_label": "Current Grade",
         "register_country_label": "Country",
         "register_state_label": "State/Province",
         "register_city_label": "City",
-        "select_country": "Select Country",
-        "select_state": "Select State/Province",
-        "select_city": "Select City"
+        "select_country": "--- Select Country ---",         # Updated prompt
+        "select_state": "--- Select State/Province ---",   # Updated prompt
+        "select_city": "--- Select City ---",              # Updated prompt
+        "fill_all_fields": "Please fill in Name and select a valid Country, State/Province, and City." # Added more specific error
     },
     "中文": {
         "page_title": "PLE Youth 教师搜索与注册",
@@ -500,31 +91,18 @@ texts = {
         "grade_select_label": "选择年级",
         "all_grades": "所有年级",
         "refresh": "刷新",
+        "register_name_label": "学生英文全名", # Added for clarity
         "register_grade_label": "当前年级",
         "register_country_label": "国家",
         "register_state_label": "州/省",
         "register_city_label": "城市",
-        "select_country": "选择国家",
-        "select_state": "选择州/省",
-        "select_city": "选择城市"
+        "select_country": "--- 选择国家 ---",       # Updated prompt
+        "select_state": "--- 选择州/省 ---",     # Updated prompt
+        "select_city": "--- 选择城市 ---",        # Updated prompt
+        "fill_all_fields": "请填写姓名并选择有效的国家、州/省和城市。" # Added more specific error
     }
 }
 
-# Sample location data (replace with actual data or API)
-location_data = {
-    "USA": {
-        "California": ["Los Angeles", "San Francisco"],
-        "New York": ["New York City", "Buffalo"]
-    },
-    "China": {
-        "Beijing": ["Beijing"],
-        "Shanghai": ["Shanghai"]
-    },
-    "Canada": {
-        "Ontario": ["Toronto", "Ottawa"],
-        "Quebec": ["Montreal", "Quebec City"]
-    }
-}
 
 # Main Application Logic
 params = st.query_params
@@ -540,136 +118,278 @@ if request_id == "admin":
 elif request_id == "teacher":
     teacher_login_page()
 else:
-    selected_language = st.sidebar.selectbox("Language / 语言", options=["English", "中文"], key="lang_select")
+    # --- STUDENT/USER PATH ---
+    selected_language = st.sidebar.selectbox(
+        "Language / 语言",
+        options=["English", "中文"],
+        key="lang_select",
+        # Optional: Add index=0 or 1 based on browser language preference if desired
+    )
     lang = texts[selected_language]
-    secure_id = request_id
+    # Use the provided ID directly as the key, encrypt if needed elsewhere but keep it simple for lookup
+    secure_id = request_id # Renamed for clarity, no encryption applied here for simplicity
     st.markdown(f"""<script>document.title = "{lang['page_title']}";</script>""", unsafe_allow_html=True)
 
+    # --- Reload data on each run for consistency ---
     user_database = load_data(USER_DB_PATH)
     teachers_database = load_data(TEACHERS_DB_PATH)
     enrollments = load_data(ENROLLMENTS_DB_PATH)
 
+    # --- REGISTRATION Section ---
     if secure_id not in user_database:
         st.title(lang["page_title"])
         st.write(lang["register_prompt"])
-        new_user_name = st.text_input("Student's English Full Name / 学生英文全名", key="register_input")
+
+        # --- Input fields ---
+        new_user_name = st.text_input(lang["register_name_label"], key="register_input")
         new_user_grade = st.text_input(lang["register_grade_label"], key="register_grade")
 
-        # Country dropdown
-        countries = list(location_data.keys())
+        # --- Country Dropdown ---
         country_label = lang["register_country_label"]
-        selected_country = st.selectbox(f"{country_label} / {lang['select_country']}", options=countries, key="register_country")
+        select_country_prompt = lang["select_country"]
+        # Add a prompt option at the beginning
+        country_options = [select_country_prompt] + sorted(list(location_data.keys()))
+        selected_country = st.selectbox(
+            country_label,
+            options=country_options,
+            key="register_country",
+            index=0 # Default to the prompt
+        )
 
-        # State/Province dropdown
-        if selected_country:
-            states = list(location_data[selected_country].keys())
-            state_label = lang["register_state_label"]
-            selected_state = st.selectbox(f"{state_label} / {lang['select_state']}", options=states, key="register_state")
-        else:
-            selected_state = None
+        # --- State/Province Dropdown (Dependent) ---
+        state_label = lang["register_state_label"]
+        select_state_prompt = lang["select_state"]
+        state_options = [select_state_prompt] # Default prompt
+        # Check if a valid country (not the prompt) is selected
+        if selected_country != select_country_prompt and selected_country in location_data:
+            state_options.extend(sorted(list(location_data[selected_country].keys())))
 
-        # City dropdown
-        if selected_state:
-            cities = location_data[selected_country][selected_state]
-            city_label = lang["register_city_label"]
-            selected_city = st.selectbox(f"{city_label} / {lang['select_city']}", options=cities, key="register_city")
-        else:
-            selected_city = None
+        selected_state = st.selectbox(
+            state_label,
+            options=state_options,
+            key="register_state",
+            index=0, # Default to prompt
+            disabled=(selected_country == select_country_prompt) # Disable if no valid country selected
+        )
 
+        # --- City Dropdown (Dependent) ---
+        city_label = lang["register_city_label"]
+        select_city_prompt = lang["select_city"]
+        city_options = [select_city_prompt] # Default prompt
+        # Check if valid country and state (not prompts) are selected
+        if selected_country != select_country_prompt and \
+           selected_state != select_state_prompt and \
+           selected_country in location_data and \
+           selected_state in location_data[selected_country]:
+            city_options.extend(sorted(location_data[selected_country][selected_state]))
+
+        selected_city = st.selectbox(
+            city_label,
+            options=city_options,
+            key="register_city",
+            index=0, # Default to prompt
+            disabled=(selected_state == select_state_prompt) # Disable if no valid state selected
+        )
+
+        st.markdown("---") # Separator
+
+        # --- Registration Button and Logic ---
         if st.button(lang["register_button"], key="register_btn"):
-            if new_user_name and new_user_name.strip() and selected_country and selected_state and selected_city:
+            # Validate that a real selection was made for all dropdowns and name is present
+            if new_user_name and new_user_name.strip() and \
+               selected_country != select_country_prompt and \
+               selected_state != select_state_prompt and \
+               selected_city != select_city_prompt:
+
                 clean_name = new_user_name.strip()
-                clean_grade = new_user_grade.strip() if new_user_grade else ""
-                user_database[secure_id] = {
+                clean_grade = new_user_grade.strip() if new_user_grade else "" # Grade is optional
+
+                # Prepare user data
+                user_data_to_save = {
                     "name": clean_name,
                     "grade": clean_grade,
                     "country": selected_country,
                     "state": selected_state,
                     "city": selected_city
                 }
+                user_database[secure_id] = user_data_to_save
                 save_data(USER_DB_PATH, user_database)
-                st.success(f"Registered {clean_name}! Reloading.")
+
+                st.success(f"Registered {clean_name}! Reloading page.")
                 st.balloons()
+                # Use st.rerun() for a cleaner reload within Streamlit
                 st.rerun()
             else:
-                st.error("Please fill in all required fields.")
-        st.stop()
+                # Give a more specific error message
+                st.error(lang["fill_all_fields"])
+        st.stop() # Stop execution here if user needs to register
 
+    # --- MAIN ENROLLMENT Section (If user is registered) ---
     user_info = user_database.get(secure_id)
-    user_name = user_info["name"] if isinstance(user_info, dict) else user_info if user_info else "Unknown User"
+    # Handle potential old format where user_info might be just the name string
+    if isinstance(user_info, dict):
+        user_name = user_info.get("name", "Unknown User")
+    elif isinstance(user_info, str):
+        user_name = user_info # Old format support
+        # Optional: you might want to prompt users with old format to update details
+    else:
+        user_name = "Unknown User" # Fallback
+
     st.sidebar.write(lang["logged_in"].format(name=user_name))
     st.title(lang["page_title"])
-    if st.button(lang["refresh"]):
+    if st.sidebar.button(lang["refresh"]): # Moved refresh to sidebar for less clutter
         st.rerun()
 
-    # Teacher Search and Enrollment with Grade Filter
-    teacher_filter = st.text_input(lang["teacher_search_label"], key="teacher_filter")
-    active_teachers = {n: i for n, i in teachers_database.items() if i.get("is_active", True)}
-    unique_grades = sorted(set(teacher_info["grade"] for teacher_info in active_teachers.values() if "grade" in teacher_info and teacher_info["grade"]))
-    grade_options = [lang["all_grades"]] + unique_grades
-    selected_grade = st.selectbox(lang["grade_select_label"], options=grade_options, key="grade_select")
-    filtered_teachers = {
-        n: i for n, i in active_teachers.items()
-        if (not teacher_filter or teacher_filter.lower() in n.lower())
-        and (selected_grade == lang["all_grades"] or i.get("grade") == selected_grade)
-    }
+    # --- Teacher Search and Filter ---
+    st.subheader(lang["teacher_search_label"]) # Use subheader for search section
+    col_search, col_grade_filter = st.columns([3, 2]) # Adjust column ratios if needed
 
+    with col_search:
+        teacher_filter = st.text_input(
+            lang["teacher_search_label"], # Use label param for text_input
+            key="teacher_filter",
+            label_visibility="collapsed" # Hide label as it's in subheader
+        )
+
+    active_teachers = {n: i for n, i in teachers_database.items() if i.get("is_active", True)}
+    unique_grades = [""] # Add blank option for grade if needed
+    if active_teachers:
+         # Ensure grade exists and is not empty before adding
+         grades_from_teachers = set(
+             str(teacher_info["grade"]).strip()
+             for teacher_info in active_teachers.values()
+             if "grade" in teacher_info and str(teacher_info.get("grade","")).strip()
+         )
+         if grades_from_teachers:
+              unique_grades = sorted(list(grades_from_teachers))
+
+    grade_options = [lang["all_grades"]] + unique_grades
+
+    with col_grade_filter:
+        selected_grade = st.selectbox(
+            lang["grade_select_label"],
+            options=grade_options,
+            key="grade_select"
+        )
+
+    # --- Filtering Logic ---
+    filtered_teachers = {}
+    if active_teachers:
+        filter_term = teacher_filter.strip().lower()
+        for n, i in active_teachers.items():
+            # Check name filter (if exists)
+            name_match = (not filter_term) or (filter_term in n.lower())
+            # Check grade filter
+            grade_match = (selected_grade == lang["all_grades"]) or \
+                          (str(i.get("grade", "")).strip() == selected_grade)
+
+            if name_match and grade_match:
+                filtered_teachers[n] = i
+
+    st.markdown("---") # Separator
+
+    # --- Display Teachers ---
     if not active_teachers:
         st.warning(lang["no_teachers_available"])
     elif not filtered_teachers:
         st.error(lang["teacher_not_found_error"])
     else:
-        if not teacher_filter.strip() and selected_grade == lang["all_grades"]:
-            st.info(lang["enter_teacher_info"])
+        # Optional: Show info only if no filters are active
+        # if not teacher_filter.strip() and selected_grade == lang["all_grades"]:
+        #     st.info(lang["enter_teacher_info"])
+
         for teacher_name, teacher_info in filtered_teachers.items():
             st.subheader(teacher_name)
             subject_key = "subject_en" if selected_language == "English" else "subject_zh"
-            subject = teacher_info[subject_key]
-            grade = teacher_info["grade"]
-            description = f"{lang['teaches']} **{subject}** ({lang['to_grade']} **{grade}**)"
-            st.write(description)
+            # Use .get for safety in case subject keys are missing
+            subject = teacher_info.get(subject_key, "N/A")
+            grade = teacher_info.get("grade", "N/A")
+
+            # Build description safely
+            description_parts = []
+            if subject and subject != "N/A":
+                 description_parts.append(f"**{subject}**")
+            if grade and grade != "N/A":
+                 description_parts.append(f"({lang['to_grade']} **{grade}**)")
+
+            if description_parts:
+                st.write(f"{lang['teaches']} {' '.join(description_parts)}")
+            else:
+                st.write(f"({lang['teaches']} N/A)") # Fallback if no subject/grade
+
+            # Enrollment status and buttons
             current_enrollment_count = len(enrollments.get(teacher_name, []))
-            cap = teacher_info.get("enrollment_cap")
-            if cap is None:
+            cap = teacher_info.get("enrollment_cap") # Can be None or a number
+
+            if cap is None or not isinstance(cap, int) or cap <= 0:
                 cap_display = lang["unlimited"]
                 is_full = False
             else:
                 cap_display = str(cap)
                 is_full = current_enrollment_count >= cap
+
             caption = lang["user_enrollment_caption"].format(count=current_enrollment_count, cap=cap_display)
             st.caption(caption)
+
             col1, col2 = st.columns(2)
             is_enrolled = user_name in enrollments.get(teacher_name, [])
+
             with col1:
                 enroll_disabled = is_enrolled or is_full
                 enroll_label = lang["enroll_button"]
-                if is_full and not is_enrolled: enroll_label = lang["enrollment_full"]
-                enroll_clicked = st.button(enroll_label, key=f"enroll_button_{teacher_name}", disabled=enroll_disabled, use_container_width=True)
+                if is_full and not is_enrolled:
+                    enroll_label = lang["enrollment_full"]
+
+                enroll_clicked = st.button(
+                    enroll_label,
+                    key=f"enroll_button_{teacher_name}_{secure_id}", # Make key more unique
+                    disabled=enroll_disabled,
+                    use_container_width=True
+                )
+
             with col2:
-                cancel_clicked = st.button(lang["cancel_button"], key=f"cancel_button_{teacher_name}", disabled=not is_enrolled, use_container_width=True)
-            if enroll_clicked and not is_enrolled and not is_full:
-                if teacher_name not in enrollments: enrollments[teacher_name] = []
-                enrollments[teacher_name].append(user_name)
-                save_data(ENROLLMENTS_DB_PATH, enrollments)
-                st.success(lang["enroll_success"].format(name=user_name, teacher=teacher_name))
-                st.rerun()
-            elif enroll_clicked and is_full:
-                st.warning(f"{lang['enrollment_full']} - Cannot enroll in {teacher_name}'s class.")
-            if cancel_clicked and is_enrolled:
-                try:
+                cancel_clicked = st.button(
+                    lang["cancel_button"],
+                    key=f"cancel_button_{teacher_name}_{secure_id}", # Make key more unique
+                    disabled=not is_enrolled,
+                    use_container_width=True
+                )
+
+            # --- Button Actions ---
+            if enroll_clicked: # No need to check !is_enrolled and !is_full due to disabled state
+                if teacher_name not in enrollments:
+                    enrollments[teacher_name] = []
+                # Ensure student is not added twice (though button should be disabled)
+                if user_name not in enrollments[teacher_name]:
+                    enrollments[teacher_name].append(user_name)
+                    save_data(ENROLLMENTS_DB_PATH, enrollments)
+                    st.success(lang["enroll_success"].format(name=user_name, teacher=teacher_name))
+                    st.rerun() # Rerun to update UI state
+                else:
+                     st.warning("Already enrolled.") # Should not happen if disabled correctly
+
+            if cancel_clicked: # No need to check is_enrolled due to disabled state
+                if teacher_name in enrollments and user_name in enrollments[teacher_name]:
                     enrollments[teacher_name].remove(user_name)
-                    if not enrollments[teacher_name]: del enrollments[teacher_name]
+                    # If the list becomes empty, remove the teacher's key
+                    if not enrollments[teacher_name]:
+                        del enrollments[teacher_name]
                     save_data(ENROLLMENTS_DB_PATH, enrollments)
                     st.info(lang["enrollment_cancelled"])
-                    st.rerun()
-                except ValueError:
-                    st.error("Enrollment inconsistency.")
+                    st.rerun() # Rerun to update UI state
+                else:
+                    st.error(lang["not_enrolled"]) # Should not happen if disabled correctly
+
+            # --- Enrollment List Expander ---
             with st.expander(f"{lang['enrolled_label']} ({current_enrollment_count})"):
                 current_teacher_enrollments = enrollments.get(teacher_name, [])
                 if current_teacher_enrollments:
+                    # Display as numbered list
                     for i, student_name in enumerate(current_teacher_enrollments, 1):
-                        display_name = f"{i}. {student_name}" + (" **(You)**" if student_name == user_name else "")
+                        display_name = f"{i}. {student_name}"
+                        if student_name == user_name:
+                            display_name += " **(You / 你)**" # Bilingual marker
                         st.markdown(display_name)
                 else:
                     st.write(lang["no_enrollments"])
-            st.markdown("---")
+            st.markdown("---") # Separator between teachers
