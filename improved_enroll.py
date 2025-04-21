@@ -487,14 +487,14 @@ request_id = plain_id.lower()
 
 # --- Routing ---
 if request_id == "admin":
-    admin_route()
+    _ = admin_route() # Assign return value to _ to potentially suppress output
 
 elif request_id == "teacher":
-    # --- Check login status HERE ---
     if st.session_state.get("teacher_logged_in"):
-        teacher_dashboard()  # Directly call dashboard if logged in
+        _ = teacher_dashboard()  # Assign return value to _
     else:
-        teacher_login_page() # Only call login page if not 
+        _ = teacher_login_page() # Assign return value to _
+
 else:
     # --- STUDENT/USER PATH (Display Teacher Description) ---
     selected_language = st.sidebar.selectbox(texts["English"]["language_label"] + " / " + texts["中文"]["language_label"], options=["English", "中文"], key="lang_select")
@@ -503,7 +503,7 @@ else:
     secure_id = request_id
     st.markdown(f"""<script>document.title = "{lang['page_title']}";</script>""", unsafe_allow_html=True)
 
-    def format_location(location_name):
+    def format_location(location_name): # Needs to be defined in this scope
         if selected_language == "English" or not translator: return location_name
         return translate_dynamic_text(translator, location_name, lang_code)
 
@@ -511,9 +511,9 @@ else:
     teachers_database = load_data(TEACHERS_DB_PATH)
     enrollments = load_data(ENROLLMENTS_DB_PATH)
 
-    # --- REGISTRATION Section (Includes RAZ Level) ---
+    # --- REGISTRATION Section ---
     if secure_id not in user_database:
-        # ... (Registration form code - unchanged from previous version, includes RAZ) ...
+        # ... (Registration code remains the same) ...
         st.title(lang["page_title"]); st.write(lang["register_prompt"])
         new_user_name = st.text_input(lang["register_name_label"], key="reg_name")
         new_user_grade = st.text_input(lang["register_grade_label"], key="reg_grade")
@@ -535,25 +535,21 @@ else:
             else: st.error(lang["fill_all_fields"])
         st.stop()
 
-    # --- MAIN ENROLLMENT Section (Display Teacher Description) ---
+    # --- MAIN ENROLLMENT Section ---
+    # ... (Enrollment code remains the same) ...
     user_info = user_database.get(secure_id)
     if isinstance(user_info, dict): user_name = user_info.get("name", "Unknown")
     elif isinstance(user_info, str): user_name = user_info
     else: user_name = "Unknown"; st.sidebar.error("User data error.")
     st.sidebar.write(lang["logged_in"].format(name=user_name))
-    # ... (Sidebar display logic - unchanged) ...
     if isinstance(user_info, dict):
         c, s, ci, gr, rz = user_info.get("country"), user_info.get("state"), user_info.get("city"), user_info.get("grade"), user_info.get("raz_level")
         loc_str = f"{format_location(ci)}, {format_location(s)}, {format_location(c)}" if c and s and ci else ""; details_str = f"Grade: {gr}" if gr else "";
         if rz: details_str += f" | RAZ: {rz}"
         if loc_str: st.sidebar.caption(loc_str);
         if details_str: st.sidebar.caption(details_str)
-
     st.title(lang["page_title"])
     if st.sidebar.button(lang["refresh"]): st.rerun()
-
-    # --- Teacher Search and Filter ---
-    # ... (Search/Filter logic - unchanged) ...
     st.subheader(lang["teacher_search_label"])
     col_search, col_grade_filter = st.columns([3, 2])
     with col_search: teacher_filter = st.text_input(lang["teacher_search_label"], key="teacher_filter", label_visibility="collapsed")
@@ -567,60 +563,36 @@ else:
         for n, i in active_teachers.items(): name_match = (not term) or (term in n.lower()); grade_match = (selected_grade_filter == lang["all_grades"]) or (str(i.get("grade","")).strip() == selected_grade_filter);
         if name_match and grade_match: filtered_teachers[n] = i
     st.markdown("---")
-
-    # --- Display Teachers (Show Description) ---
     if not active_teachers: st.warning(lang["no_teachers_available"])
     elif not filtered_teachers: st.error(lang["teacher_not_found_error"])
     else:
         for teacher_name, teacher_info in filtered_teachers.items():
+            # ... (Teacher display loop remains the same) ...
             st.subheader(teacher_name)
-
-            # Display Subject/Grade (translate subject if needed)
-            subject_en = teacher_info.get("subject_en", "N/A")
-            display_subject = subject_en
+            subject_en = teacher_info.get("subject_en", "N/A"); display_subject = subject_en
             if selected_language != "English" and translator: display_subject = translate_dynamic_text(translator, subject_en, lang_code)
-            grade = teacher_info.get("grade", "N/A")
-            desc_parts = [];
+            grade = teacher_info.get("grade", "N/A"); desc_parts = [];
             if display_subject != "N/A": desc_parts.append(f"**{display_subject}**")
             if grade != "N/A": desc_parts.append(f"({lang['to_grade']} **{grade}**)")
             st.write(f"{lang['teaches']} {' '.join(desc_parts)}" if desc_parts else f"({lang['teaches']} N/A)")
-
-            # <-- Display Description -->
-            desc_en = teacher_info.get("description_en", "")
-            desc_zh = teacher_info.get("description_zh", "")
-            # Prioritize selected language, fallback to English, then show default message
-            display_desc = desc_zh if selected_language == "中文" and desc_zh else desc_en
-            if display_desc:
-                st.markdown(f"> _{display_desc}_") # Use markdown blockquote/italics
-            else:
-                st.caption(f"_{lang['no_description_available']}_") # Show default if both empty
-            # <-- End Description Display -->
-
-            # Enrollment status/buttons
-            current_teacher_enrollments = enrollments.get(teacher_name, [])
-            count = len(current_teacher_enrollments); cap = teacher_info.get("enrollment_cap"); cap_text = lang["unlimited"] if cap is None else str(cap)
-            is_full = False if cap is None else count >= cap
+            desc_en = teacher_info.get("description_en", ""); desc_zh = teacher_info.get("description_zh", ""); display_desc = desc_zh if selected_language == "中文" and desc_zh else desc_en
+            if display_desc: st.markdown(f"> _{display_desc}_")
+            else: st.caption(f"_{lang['no_description_available']}_")
+            current_teacher_enrollments = enrollments.get(teacher_name, []); count = len(current_teacher_enrollments); cap = teacher_info.get("enrollment_cap"); cap_text = lang["unlimited"] if cap is None else str(cap); is_full = False if cap is None else count >= cap
             st.caption(lang["user_enrollment_caption"].format(count=count, cap=cap_text))
             col1, col2 = st.columns(2); is_enrolled = user_name in current_teacher_enrollments
             with col1: enroll_label = lang["enrollment_full"] if is_full and not is_enrolled else lang["enroll_button"]; enroll_disabled = is_enrolled or is_full; enroll_clicked = st.button(enroll_label, key=f"enroll_{teacher_name}", disabled=enroll_disabled, use_container_width=True)
             with col2: cancel_clicked = st.button(lang["cancel_button"], key=f"cancel_{teacher_name}", disabled=not is_enrolled, use_container_width=True)
-
-            # Button Actions
             if enroll_clicked:
-                # ... (Enroll click logic - unchanged) ...
                 enrollments_now = load_data(ENROLLMENTS_DB_PATH); teacher_list_now = enrollments_now.get(teacher_name, []); teacher_info_now = load_data(TEACHERS_DB_PATH).get(teacher_name, {}); cap_now = teacher_info_now.get("enrollment_cap"); is_full_now = False if cap_now is None else len(teacher_list_now) >= cap_now
                 if user_name not in teacher_list_now and not is_full_now: teacher_list_now.append(user_name); enrollments_now[teacher_name] = teacher_list_now; save_data(ENROLLMENTS_DB_PATH, enrollments_now); enrollments_global = enrollments_now; st.success(lang["enroll_success"].format(name=user_name, teacher=teacher_name)); st.rerun()
             if cancel_clicked:
-                # ... (Cancel click logic - unchanged) ...
                 enrollments_now = load_data(ENROLLMENTS_DB_PATH)
                 if teacher_name in enrollments_now and user_name in enrollments_now[teacher_name]: enrollments_now[teacher_name].remove(user_name);
                 if not enrollments_now[teacher_name]: del enrollments_now[teacher_name]
                 save_data(ENROLLMENTS_DB_PATH, enrollments_now); enrollments_global = enrollments_now; st.info(lang["enrollment_cancelled"]); st.rerun()
-
-            # Enrollment List Expander
             with st.expander(f"{lang['enrolled_label']} ({count})"):
-                # ... (Expander display logic - unchanged) ...
                  if current_teacher_enrollments:
                     for i, name in enumerate(sorted(current_teacher_enrollments), 1): marker = f" **({lang['you_marker']})**" if name == user_name else ""; st.markdown(f"{i}. {name}{marker}")
                  else: st.write(lang["no_enrollments"])
-            st.markdown("---") # Separator between teachers
+            st.markdown("---")
