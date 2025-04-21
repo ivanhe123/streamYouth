@@ -397,7 +397,7 @@ request_id = plain_id.lower()
 
 # --- Routing ---
 if request_id == "admin":
-    admin_route()
+    admin_route() # Assuming placeholder logic is replaced
 elif request_id == "teacher":
     teacher_login_page()
 else:
@@ -409,11 +409,21 @@ else:
     )
 
     # --- Select the appropriate language dictionary DIRECTLY ---
-    lang = texts.get(selected_language, texts["English"]) # Default to English if invalid selection
+    lang = texts.get(selected_language, texts["English"]) # Default to English
     lang_code = 'en' if selected_language == 'English' else 'zh-cn' # For dynamic translation
 
     secure_id = request_id
     st.markdown(f"""<script>document.title = "{lang['page_title']}";</script>""", unsafe_allow_html=True)
+
+    # --- Define format_location HERE, before the registration check ---
+    # It needs selected_language, translator, translate_dynamic_text, lang_code
+    def format_location(location_name):
+        """Translates location name for display if needed."""
+        if selected_language == "English" or not translator:
+            return location_name # Return original English name
+        # Only translate if Chinese is selected AND translator is available
+        return translate_dynamic_text(translator, location_name, lang_code)
+    # --- End format_location definition ---
 
     # --- Reload data for user path ---
     user_database = load_data(USER_DB_PATH)
@@ -428,24 +438,15 @@ else:
         new_user_name = st.text_input(lang["register_name_label"], key="register_input")
         new_user_grade = st.text_input(lang["register_grade_label"], key="register_grade")
 
-        # --- Location Dropdowns using format_func for dynamic translation ---
-        def format_location(location_name):
-            if selected_language == "English" or not translator:
-                return location_name # Return original English name
-            # Only translate if Chinese is selected AND translator is available
-            return translate_dynamic_text(translator, location_name, lang_code)
-
-        # Country
+        # Location Dropdowns can now use format_location defined above
         country_options = [lang["select_country"]] + sorted(location_data.keys())
         selected_country = st.selectbox(lang["register_country_label"], options=country_options, key="reg_country", index=0, format_func=format_location)
 
-        # State/Province
         state_options = [lang["select_state"]]
         if selected_country != lang["select_country"] and selected_country in location_data:
             state_options.extend(sorted(location_data[selected_country].keys()))
         selected_state = st.selectbox(lang["register_state_label"], options=state_options, key="reg_state", index=0, disabled=(selected_country == lang["select_country"]), format_func=format_location)
 
-        # City
         city_options = [lang["select_city"]]
         if selected_state != lang["select_state"] and selected_country in location_data and selected_state in location_data[selected_country]:
             city_options.extend(sorted(location_data[selected_country][selected_state]))
@@ -454,7 +455,8 @@ else:
         st.markdown("---")
 
         if st.button(lang["register_button"], key="register_btn"):
-            if new_user_name.strip() and selected_country != lang["select_country"] and selected_state != lang["select_state"] and selected_city != lang["select_city"]:
+             # ... (rest of registration button logic - unchanged) ...
+             if new_user_name.strip() and selected_country != lang["select_country"] and selected_state != lang["select_state"] and selected_city != lang["select_city"]:
                 user_data_to_save = {
                     "name": new_user_name.strip(),
                     "grade": new_user_grade.strip(),
@@ -466,20 +468,24 @@ else:
                 save_data(USER_DB_PATH, user_database)
                 st.success(lang["registered_success"].format(name=new_user_name.strip()))
                 st.balloons(); time.sleep(1); st.rerun()
-            else: st.error(lang["fill_all_fields"])
+             else: st.error(lang["fill_all_fields"])
         st.stop()
 
     # --- MAIN ENROLLMENT Section ---
+    # This section runs when the user IS registered
     user_info = user_database.get(secure_id)
     if isinstance(user_info, dict): user_name = user_info.get("name", "Unknown")
     elif isinstance(user_info, str): user_name = user_info # Old format
     else: user_name = "Unknown"; st.sidebar.error("User data error.")
 
     st.sidebar.write(lang["logged_in"].format(name=user_name))
-    # Optional: Display location in sidebar (uses format_location for translation)
+
+    # --- This line can NOW find format_location ---
     if isinstance(user_info, dict):
         c, s, ci = user_info.get("country"), user_info.get("state"), user_info.get("city")
-        if c and s and ci: st.sidebar.caption(f"{format_location(ci)}, {format_location(s)}, {format_location(c)}")
+        # Check if location data exists before trying to format it
+        if c and s and ci:
+            st.sidebar.caption(f"{format_location(ci)}, {format_location(s)}, {format_location(c)}")
 
     st.title(lang["page_title"])
     if st.sidebar.button(lang["refresh"]): st.rerun()
