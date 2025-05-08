@@ -478,9 +478,9 @@ def admin_route():
     else:
         hide_all_classes = st.button("Hide All Classes",key="hide_all")
     if st.session_state.all_closed:
-        close_all_enroll = st.button("Show All Classes",key="close_all")
+        close_all_enroll = st.button("Open Enrollment for All Classes",key="close_all")
     else:
-        close_all_enroll = st.button("Hide All Classes",key="close_all")
+        close_all_enroll = st.button("Close Enrollment for All Classes",key="close_all")
     if hide_all_classes:
         teaches = load_data(TEACHERS_DB_PATH)
         if st.session_state.all_hidden:
