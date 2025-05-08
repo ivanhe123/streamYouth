@@ -482,18 +482,29 @@ def admin_route():
     else:
         close_all_enroll = st.button("Hide All Classes",key="close_all")
     if hide_all_classes:
+        teaches = load_data(TEACHERS_DB_PATH)
         if st.session_state.all_hidden:
             st.session_state.all_hidden = False
+            for info in teaches:
+                teaches[info]["is_active"] = True
         else:
             st.session_state.all_hidden = True
+            for info in teaches:
+                teaches[info]["is_active"] = False
+        save_data(TEACHERS_DB_PATH, teaches)
         st.rerun()
 
     if close_all_enroll:
+        teaches = load_data(TEACHERS_DB_PATH)
         if st.session_state.all_closed:
             st.session_state.all_closed = False
-
+            for info in teaches:
+                teaches[info]["allow_enroll"] = True
         else:
             st.session_state.all_closed = True
+            for info in teaches:
+                teaches[info]["allow_enroll"] = False
+        save_data(TEACHERS_DB_PATH, teaches)
         st.rerun()
 
 def teacher_login_page():
