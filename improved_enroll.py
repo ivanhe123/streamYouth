@@ -9,6 +9,7 @@ import hashlib
 import pandas as pd
 import uuid
 import time
+from streamlit_star_rating import st_star_rating
 from googletrans import Translator, LANGUAGES # Using googletrans (unofficial)
 
 # --- Translation Setup (ONLY for dynamic content) ---
@@ -46,7 +47,7 @@ texts = {
         "register_prompt": "Welcome! Please register by entering the student's details below:", "register_button": "Register",
         "logged_in": "Logged in as: {name}", "enrolled_label": "Enrolled Students", "no_enrollments": "No students enrolled yet.",
         "not_enrolled": "Your name was not found in the enrollment.", "name_required": "Please enter your name to register.",
-        "no_teachers_available": "No teachers are currently available for enrollment.", "enrollment_full": "Enrollment Full",
+        "no_teachers_available": "No teachers are currently available for enrollment.", "enrollment_full": "Enrollment Full","enrollment_closed": "Enrollment Closed",
         "user_enrollment_caption": "Enrolled: {count} / {cap}", "unlimited": "Unlimited", "grade_select_label": "Select Grade",
         "all_grades": "All", "refresh": "Refresh", "register_name_label": "Student's English Full Name", "register_grade_label": "Current Grade",
         "register_raz_label": "RAZ Level", # <-- Added RAZ Label
@@ -56,9 +57,9 @@ texts = {
         "already_enrolled_warning": "Already enrolled.", "registered_success": "Registered {name}! Reloading page.", "you_marker": "You",
         "save_settings_button": "Save Settings", "settings_updated_success": "Settings updated successfully!", "class_info_header": "Class Information",
         "subject_en_label": "Subject (English)", "grade_label": "Grade", "enrollment_limit_header": "Enrollment Limit",
-        "max_students_label": "Maximum Students (0=unlimited)", "class_status_header": "Class Status",
-        "status_active": "Active (Students can enroll)", "status_cancelled": "Cancelled (Students cannot enroll)",
-        "cancel_class_button": "Cancel Class (Hide)", "reactivate_class_button": "Reactivate Class (Allow Enrollment)",
+        "max_students_label": "Maximum Students (0=unlimited)", "class_status_header": "Class Status","class_rating": "Class Rating","class_no_rating": "No Ratings Yet", "enrollment_status_header": "Enrollment Status",
+        "status_active": "Active (Students can see)", "status_cancelled": "Cancelled (Students cannot see)","enrollment_active": "Open (Students can enroll)","enrollment_blocked": "Closed (Students cannot enroll)",
+        "cancel_class_button": "Cancel Class (Hide)", "reactivate_class_button": "Reactivate Class (Show)","block_enroll_button": "Close Enrollment", "reactivate_enroll_button": "Open Enrollment",
         "enrollment_overview_header": "Enrollment Overview", "current_enrollment_metric": "Current Enrollment", "enrolled_students_list_header": "Enrolled Students:",
         "teacher_dashboard_title": "Teacher Dashboard: {name}", "teacher_logout_button": "Logout", "teacher_login_title": "Teacher Portal Login",
         "teacher_id_prompt": "Enter your Teacher ID:", "login_button": "Login", "invalid_teacher_id_error": "Invalid Teacher ID.",
@@ -85,7 +86,7 @@ texts = {
         "register_prompt": "欢迎！请通过输入学生的详细信息完成注册：", "register_button": "注册",
         "logged_in": "已登录: {name}", "enrolled_label": "已报名的学生", "no_enrollments": "当前没有报名的学生。",
         "not_enrolled": "未找到你的报名记录。", "name_required": "请输入你的名字以注册。",
-        "no_teachers_available": "目前没有可报名的教师。", "enrollment_full": "报名已满",
+        "no_teachers_available": "目前没有可报名的教师。", "enrollment_full": "报名已满","enrollment_closed": "报名关闭",
         "user_enrollment_caption": "已报名: {count} / {cap}", "unlimited": "无限制", "grade_select_label": "选择年级",
         "all_grades": "所有年级", "refresh": "刷新", "register_name_label": "学生英文全名", "register_grade_label": "当前年级",
         "register_raz_label": "RAZ 等级", # <-- Added RAZ Label
@@ -95,9 +96,9 @@ texts = {
         "already_enrolled_warning": "已报名。", "registered_success": "已注册 {name}! 正在重新加载页面。", "you_marker": "你",
         "save_settings_button": "保存设置", "settings_updated_success": "设置已成功更新！", "class_info_header": "课程信息",
         "subject_en_label": "科目（英文）", "grade_label": "年级", "enrollment_limit_header": "报名人数限制",
-        "max_students_label": "最多学生数（0表示无限制）", "class_status_header": "课程状态",
-        "status_active": "开放（学生可以报名）", "status_cancelled": "已取消（学生无法报名）",
-        "cancel_class_button": "取消课程（隐藏）", "reactivate_class_button": "重新激活课程（允许报名）",
+        "max_students_label": "最多学生数（0表示无限制）", "class_status_header": "课程状态","class_rating": "课程评分","class_no_rating": "还没有评分","enrollment_status_header": "报名状态",
+        "status_active": "开放（学生可以看到）", "status_cancelled": "已取消（学生无法看到）","enrollment_active": "开放（学生可以报名）","enrollment_blocked": "关闭（学生不可以报名）",
+        "cancel_class_button": "取消课程（隐藏）", "reactivate_class_button": "重新激活课程（显示）","block_enroll_button": "关闭报名", "reactivate_enroll_button": "开放报名",
         "enrollment_overview_header": "报名概览", "current_enrollment_metric": "当前报名人数", "enrolled_students_list_header": "已报名学生：",
         "teacher_dashboard_title": "教师仪表板：{name}", "teacher_logout_button": "登出", "teacher_login_title": "教师门户登录",
         "teacher_id_prompt": "输入您的教师ID：", "login_button": "登录", "invalid_teacher_id_error": "无效的教师ID。",
@@ -174,16 +175,22 @@ def teacher_dashboard():
     current_teachers_db = load_data(TEACHERS_DB_PATH)
     teacher_details = current_teachers_db.get(teacher_name)
     if not teacher_details: st.error("Teacher data not found."); st.stop()
-
-
+    ratt=teacher_details.get("rating",None)
+    if (ratt != None and ratt.isdigit() and int(ratt)>=0):
+        st_star_rating(label = admin_lang["class_rating"], maxValue = 5, defaultValue = int(teacher_details.get("rating","0")), key = "rating", read_only = True )
+    else:
+        st.subheader(admin_lang["class_rating"])
+        st.info(admin_lang["class_no_rating"])
     # ... (Class Status display and buttons - unchanged) ...
     st.subheader(admin_lang["class_status_header"])
     is_active = teacher_details.get("is_active", True)
+    
     status_text = admin_lang["status_active"] if is_active else admin_lang["status_cancelled"]
     if is_active:
-        st.success(f"Status: {status_text}")
+        st.success(f"Class Status: {status_text}")
     else:
-        st.warning(f"Status: {status_text}")
+        st.warning(f"Class Status: {status_text}")
+        
     btn_label = admin_lang["cancel_class_button"] if is_active else admin_lang["reactivate_class_button"]
     btn_key = "cancel_class_btn" if is_active else "reactivate_class_btn"
     new_status = not is_active
@@ -191,6 +198,22 @@ def teacher_dashboard():
             current_teachers_db[teacher_name]["is_active"] = new_status
             save_data(TEACHERS_DB_PATH, current_teachers_db); teachers_database_global = current_teachers_db
             st.success("Class status updated."); st.rerun()
+
+    st.subheader(admin_lang["enrollment_status_header"])
+    allow_enr = teacher_details.get("allow_enroll", True)
+    status_text = admin_lang["enrollment_active"] if allow_enr else admin_lang["enrollment_blocked"]
+    if allow_enr:
+        st.success(f"Enrollment Status: {status_text}")
+    else:
+        st.warning(f"Enrollment Status: {status_text}")
+    
+    btn_label1 = admin_lang["block_enroll_button"] if allow_enr else admin_lang["reactivate_enroll_button"]
+    btn_key1 = "block_enroll_btn" if allow_enr else "reactivate_enroll_btn"
+    new_status1 = not allow_enr
+    if st.button(btn_label1, key=btn_key1):
+            current_teachers_db[teacher_name]["allow_enroll"] = new_status1
+            save_data(TEACHERS_DB_PATH, current_teachers_db); teachers_database_global = current_teachers_db
+            st.success("Enrollment status updated."); st.rerun()
 
     # ... (Class Settings Form - unchanged) ...
     st.markdown("---")
@@ -273,12 +296,14 @@ def admin_route():
         if "enrollment_cap" not in details: details["enrollment_cap"] = None; needs_saving_defaults = True
         if "description_en" not in details: details["description_en"] = ""; needs_saving_defaults = True
         if "description_zh" not in details: details["description_zh"] = ""; needs_saving_defaults = True
-        teachers_list.append({"Teacher ID": details["id"],"Teacher Name": name,"Subject (English)": details.get("subject_en", ""),"Description (English)": details.get("description_en", ""),"Description (Chinese)": details.get("description_zh", ""),"Grade": details.get("grade", ""),"Is Active": details.get("is_active"),"Enrollment Cap": details.get("enrollment_cap") if details.get("enrollment_cap") is not None else 0})
+        if "rating" not in details: details["rating"] = None; needs_saving_defaults = True
+        if "allow_enroll" not in details: details["allow_enroll"] = True; needs_saving_defaults = True
+        teachers_list.append({"Teacher ID": details["id"],"Teacher Name": name,"Subject (English)": details.get("subject_en", ""),"Description (English)": details.get("description_en", ""),"Description (Chinese)": details.get("description_zh", ""),"Grade": details.get("grade", ""),"Is Active": details.get("is_active"),"Rating": details.get("rating"),"Allow Enroll":details.get("allow_enroll"),"Enrollment Cap": details.get("enrollment_cap") if details.get("enrollment_cap") is not None else 0})
     if needs_saving_defaults: save_data(TEACHERS_DB_PATH, temp_teachers_db_for_edit); teachers_database_global = temp_teachers_db_for_edit; st.info("Applied defaults to teachers. Data saved.")
-    columns_teacher = ["Teacher ID", "Teacher Name", "Enrollment Cap", "Subject (English)", "Grade", "Description (English)", "Description (Chinese)", "Is Active"]; teachers_df = pd.DataFrame(teachers_list, columns=columns_teacher) if teachers_list else pd.DataFrame(columns=columns_teacher)
+    columns_teacher = ["Teacher ID", "Teacher Name", "Enrollment Cap", "Subject (English)", "Grade", "Description (English)", "Description (Chinese)", "Rating","Allow Enroll", "Is Active"]; teachers_df = pd.DataFrame(teachers_list, columns=columns_teacher) if teachers_list else pd.DataFrame(columns=columns_teacher)
     # Teacher editor UI
     edited_teachers_df = st.data_editor(teachers_df,num_rows="dynamic",key="teacher_editor",use_container_width=True,hide_index=True,
-        column_config={"Teacher ID": st.column_config.TextColumn("ID", disabled=True),"Teacher Name": st.column_config.TextColumn("Name", required=True),"Subject (English)": st.column_config.TextColumn("Subject EN"),"Description (English)": st.column_config.TextColumn(admin_lang["admin_manage_teachers_desc_en"]),"Description (Chinese)": st.column_config.TextColumn(admin_lang["admin_manage_teachers_desc_zh"]),"Grade": st.column_config.TextColumn("Grade"),"Is Active": st.column_config.CheckboxColumn("Active?", disabled=True),"Enrollment Cap": st.column_config.NumberColumn("Cap (0=unlimited)", min_value=0, step=1, format="%d")},
+        column_config={"Teacher ID": st.column_config.TextColumn("ID", disabled=True),"Teacher Name": st.column_config.TextColumn("Name", required=True),"Subject (English)": st.column_config.TextColumn("Subject EN"),"Description (English)": st.column_config.TextColumn(admin_lang["admin_manage_teachers_desc_en"]),"Description (Chinese)": st.column_config.TextColumn(admin_lang["admin_manage_teachers_desc_zh"]),"Grade": st.column_config.TextColumn("Grade"),"Rating": st.column_config.TextColumn("Class Rating"),"Allow Enroll": st.column_config.CheckboxColumn("Allow Enroll?"),"Is Active": st.column_config.CheckboxColumn("Active?"),"Enrollment Cap": st.column_config.NumberColumn("Cap (0=unlimited)", min_value=0, step=1, format="%d")},
         column_order=columns_teacher)
     # Teacher save logic
     if st.button(admin_lang["save_teachers_button"]):
@@ -300,8 +325,14 @@ def admin_route():
                  try: cap_int = int(enrollment_cap_input); processed_cap = cap_int if cap_int > 0 else None
                  except (ValueError, TypeError): st.error(f"Row {index+1}: Invalid Cap."); error_occurred = True; continue
             original_details = next((d for _, d in original_teachers_data.items() if d.get("id") == teacher_id), None); current_is_active = original_details.get("is_active", True) if original_details else True
+
             desc_en = str(row["Description (English)"]).strip() if pd.notna(row["Description (English)"]) else ""; desc_zh = str(row["Description (Chinese)"]).strip() if pd.notna(row["Description (Chinese)"]) else ""
-            new_teachers_database[name] = {"id": teacher_id,"subject_en": str(row["Subject (English)"]) if pd.notna(row["Subject (English)"]) else "","grade": str(row["Grade"]) if pd.notna(row["Grade"]) else "","description_en": desc_en,"description_zh": desc_zh,"is_active": current_is_active,"enrollment_cap": processed_cap}
+            rat=row["Rating"]
+            if (row["Allow Enroll"]==None):
+                allow_enroll=True
+            else:
+                allow_enroll=row["Allow Enroll"]
+            new_teachers_database[name] = {"id": teacher_id,"subject_en": str(row["Subject (English)"]) if pd.notna(row["Subject (English)"]) else "","grade": str(row["Grade"]) if pd.notna(row["Grade"]) else "","description_en": desc_en,"description_zh": desc_zh,"is_active": current_is_active,"allow_enroll":allow_enroll,"enrollment_cap": processed_cap,"rating":rat}
         deleted_teacher_names = [n for n, d in original_teachers_data.items() if d.get("id") not in processed_ids]
         if not error_occurred:
             try:
@@ -435,6 +466,36 @@ def admin_route():
         use_container_width=True,
         hide_index=True,
     )
+    st.markdown("---")
+
+    st.subheader("Batch Actions (Proceed with Caution)")
+    if "all_closed" not in st.session_state:
+        st.session_state.all_closed=False
+    if "all_hidden" not in st.session_state:
+        st.session_state.all_hidden = False
+    if st.session_state.all_hidden:
+        hide_all_classes = st.button("Show All Classes",key="hide_all")
+    else:
+        hide_all_classes = st.button("Hide All Classes",key="hide_all")
+    if st.session_state.all_closed:
+        close_all_enroll = st.button("Show All Classes",key="close_all")
+    else:
+        close_all_enroll = st.button("Hide All Classes",key="close_all")
+    if hide_all_classes:
+        if st.session_state.all_hidden:
+            st.session_state.all_hidden = False
+        else:
+            st.session_state.all_hidden = True
+        st.rerun()
+
+    if close_all_enroll:
+        if st.session_state.all_closed:
+            st.session_state.all_closed = False
+
+        else:
+            st.session_state.all_closed = True
+        st.rerun()
+
 def teacher_login_page():
     # REMOVE THIS BLOCK - Check is now done in the main router
     # if st.session_state.get("teacher_logged_in"):
@@ -553,9 +614,11 @@ else:
     if not active_teachers: st.warning(lang["no_teachers_available"])
     elif not filtered_teachers: st.error(lang["teacher_not_found_error"])
     else:
+
         for teacher_name, teacher_info in filtered_teachers.items():
             st.subheader(teacher_name)
-
+            
+    # ... (Class Status display and buttons - unch
             # ... (Display Subject/Grade/Description - unchanged) ...
             subject_en = teacher_info.get("subject_en", "N/A"); display_subject = subject_en
             if selected_language != "English" and translator: display_subject = translate_dynamic_text(translator, subject_en, lang_code)
@@ -566,12 +629,18 @@ else:
             desc_en = teacher_info.get("description_en", ""); desc_zh = teacher_info.get("description_zh", ""); display_desc = desc_zh if selected_language == "中文" and desc_zh else desc_en
             if display_desc: st.markdown(f"> _{display_desc}_")
             else: st.caption(f"_{lang['no_description_available']}_")
-
+            ratt=teacher_info.get("rating",None)
+            if (ratt != None and ratt.isdigit() and int(ratt)>=0):
+                st_star_rating(label = lang["class_rating"], maxValue = 5, defaultValue = int(teacher_info.get("rating","0")), key = "rating", read_only = True )
+            else:
+                st.subheader(lang["class_rating"])
+                st.info(lang["class_no_rating"])
             # --- Enrollment status/buttons (Using secure_id) ---
             current_teacher_enrollment_ids = enrollments.get(teacher_name, []) # Get list of IDs
             count = len(current_teacher_enrollment_ids)
             cap = teacher_info.get("enrollment_cap"); cap_text = lang["unlimited"] if cap is None else str(cap)
             is_full = False if cap is None else count >= cap
+            all_enr = teacher_info.get("allow_enroll")
 
             # Check enrollment based on the current user's secure_id
             is_enrolled = secure_id in current_teacher_enrollment_ids
@@ -580,8 +649,14 @@ else:
             col1, col2 = st.columns(2)
 
             with col1:
-                enroll_label = lang["enrollment_full"] if is_full and not is_enrolled else lang["enroll_button"]
-                enroll_disabled = is_enrolled or is_full
+                enroll_label = lang["enroll_button"]
+                if is_full:
+                    enroll_label = lang["enrollment_full"]
+                elif is_enrolled:
+                    enroll_label=lang["enroll_button"]
+                elif not all_enr:
+                    enroll_label = lang["enrollment_closed"]
+                enroll_disabled = is_enrolled or is_full or not all_enr
                 enroll_clicked = st.button(enroll_label, key=f"enroll_{teacher_name}_{secure_id}", disabled=enroll_disabled, use_container_width=True) # Key uses secure_id
             with col2:
                 cancel_clicked = st.button(lang["cancel_button"], key=f"cancel_{teacher_name}_{secure_id}", disabled=not is_enrolled, use_container_width=True) # Key uses secure_id
