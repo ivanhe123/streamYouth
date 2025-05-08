@@ -180,7 +180,10 @@ def teacher_dashboard():
     st.subheader(admin_lang["class_status_header"])
     is_active = teacher_details.get("is_active", True)
     status_text = admin_lang["status_active"] if is_active else admin_lang["status_cancelled"]
-    st.success(f"Status: {status_text}") if is_active else st.warning(f"Status: {status_text}")
+    if is_active:
+        st.success(f"Status: {status_text}")
+    else:
+        st.warning(f"Status: {status_text}")
     btn_label = admin_lang["cancel_class_button"] if is_active else admin_lang["reactivate_class_button"]
     btn_key = "cancel_class_btn" if is_active else "reactivate_class_btn"
     new_status = not is_active
