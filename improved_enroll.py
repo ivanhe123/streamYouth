@@ -36,6 +36,7 @@ st.markdown("""<style>.st-emotion-cache-1p1m4ay{ visibility:hidden }</style>""",
 USER_DB_PATH = "user_db.json"
 ENROLLMENTS_DB_PATH = "enrollments.json"
 TEACHERS_DB_PATH = "teachers.json"
+SWITCH_DB_PATH = "switch.json"
 
 # --- RESTORED Bilingual Texts Dictionary (for UI elements) ---
 texts = {
@@ -47,7 +48,7 @@ texts = {
         "register_prompt": "Welcome! Please register by entering the student's details below:", "register_button": "Register",
         "logged_in": "Logged in as: {name}", "enrolled_label": "Enrolled Students", "no_enrollments": "No students enrolled yet.",
         "not_enrolled": "Your name was not found in the enrollment.", "name_required": "Please enter your name to register.",
-        "no_teachers_available": "No teachers are currently available for enrollment.", "enrollment_full": "Enrollment Full","enrollment_closed": "Enrollment Closed",
+        "no_teachers_available": "No teachers are currently available for enrollment.", "enrollment_full": "Enrollment Full","enrollment_closed": "The Enrollment for This Cource Has Been Closed",
         "user_enrollment_caption": "Enrolled: {count} / {cap}", "unlimited": "Unlimited", "grade_select_label": "Select Grade",
         "all_grades": "All", "refresh": "Refresh", "register_name_label": "Student's English Full Name", "register_grade_label": "Current Grade",
         "register_raz_label": "RAZ Level", # <-- Added RAZ Label
@@ -86,7 +87,7 @@ texts = {
         "register_prompt": "欢迎！请通过输入学生的详细信息完成注册：", "register_button": "注册",
         "logged_in": "已登录: {name}", "enrolled_label": "已报名的学生", "no_enrollments": "当前没有报名的学生。",
         "not_enrolled": "未找到你的报名记录。", "name_required": "请输入你的名字以注册。",
-        "no_teachers_available": "目前没有可报名的教师。", "enrollment_full": "报名已满","enrollment_closed": "报名关闭",
+        "no_teachers_available": "目前没有可报名的教师。", "enrollment_full": "报名已满","enrollment_closed": "此课程报名以关闭",
         "user_enrollment_caption": "已报名: {count} / {cap}", "unlimited": "无限制", "grade_select_label": "选择年级",
         "all_grades": "所有年级", "refresh": "刷新", "register_name_label": "学生英文全名", "register_grade_label": "当前年级",
         "register_raz_label": "RAZ 等级", # <-- Added RAZ Label
@@ -143,6 +144,10 @@ def save_data(path, data):
 user_database_global = load_data(USER_DB_PATH)
 enrollments_global = load_data(ENROLLMENTS_DB_PATH)
 teachers_database_global = load_data(TEACHERS_DB_PATH)
+broadcasted_info = load_data(SWITCH_DB_PATH)
+if (broadcasted_info == {}):
+    save_data(SWITCH_DB_PATH, {"rating":False,"all_hidden":False,"all_closed":False})
+    broadcasted_info = load_data(SWITCH_DB_PATH)
 
 # --- Encryption & ID Generation ---
 if "secret_key" not in st.secrets: st.error("`secret_key` missing."); st.stop()
@@ -469,44 +474,64 @@ def admin_route():
     st.markdown("---")
 
     st.subheader("Batch Actions (Proceed with Caution)")
-    if "all_closed" not in st.session_state:
-        st.session_state.all_closed=False
-    if "all_hidden" not in st.session_state:
-        st.session_state.all_hidden = False
-    if st.session_state.all_hidden:
+
+    SWITCH=load_data(SWITCH_DB_PATH)
+    all_rate = SWITCH["rating"]
+    all_hidden = SWITCH["all_hidden"]
+    all_closed = SWITCH["all_closed"]
+    teaches = load_data(TEACHERS_DB_PATH)
+    if all_hidden:
         hide_all_classes = st.button("Show All Classes",key="hide_all")
     else:
         hide_all_classes = st.button("Hide All Classes",key="hide_all")
-    if st.session_state.all_closed:
+    if all_closed:
         close_all_enroll = st.button("Open Enrollment for All Classes",key="close_all")
     else:
         close_all_enroll = st.button("Close Enrollment for All Classes",key="close_all")
+    if all_rate:
+        rate_all = st.button("Enable Rating for All Students",key="rate_all")
+    else:
+        rate_all = st.button("Disable Rating for All Student",key="rate_all")
+    
     if hide_all_classes:
-        teaches = load_data(TEACHERS_DB_PATH)
-        if st.session_state.all_hidden:
-            st.session_state.all_hidden = False
+
+        if all_hidden:
+            SWITCH["all_hidden"] = False
             for info in teaches:
                 teaches[info]["is_active"] = True
         else:
-            st.session_state.all_hidden = True
+            SWITCH["all_hidden"] = True
             for info in teaches:
                 teaches[info]["is_active"] = False
         save_data(TEACHERS_DB_PATH, teaches)
+        save_data(SWITCH_DB_PATH, SWITCH)
         st.rerun()
 
     if close_all_enroll:
-        teaches = load_data(TEACHERS_DB_PATH)
-        if st.session_state.all_closed:
-            st.session_state.all_closed = False
+        
+        if all_closed:
+            SWITCH["all_closed"] = False
             for info in teaches:
                 teaches[info]["allow_enroll"] = True
         else:
-            st.session_state.all_closed = True
+            SWITCH["all_closed"] = True
             for info in teaches:
                 teaches[info]["allow_enroll"] = False
         save_data(TEACHERS_DB_PATH, teaches)
+        save_data(SWITCH_DB_PATH, SWITCH)
         st.rerun()
+    
+    if rate_all:
+        
+        all_rate = SWITCH["rating"]
+        if all_rate:
+            SWITCH["rating"]=False
+            
 
+        else:
+            SWITCH["rating"]=True
+        save_data(SWITCH_DB_PATH, SWITCH)
+        st.rerun()
 def teacher_login_page():
     # REMOVE THIS BLOCK - Check is now done in the main router
     # if st.session_state.get("teacher_logged_in"):
@@ -627,7 +652,9 @@ else:
     else:
 
         for teacher_name, teacher_info in filtered_teachers.items():
+            
             st.subheader(teacher_name)
+            
             
     # ... (Class Status display and buttons - unch
             # ... (Display Subject/Grade/Description - unchanged) ...
@@ -651,26 +678,29 @@ else:
             count = len(current_teacher_enrollment_ids)
             cap = teacher_info.get("enrollment_cap"); cap_text = lang["unlimited"] if cap is None else str(cap)
             is_full = False if cap is None else count >= cap
-            all_enr = teacher_info.get("allow_enroll")
+            
 
             # Check enrollment based on the current user's secure_id
             is_enrolled = secure_id in current_teacher_enrollment_ids
+            all_enr = teacher_info.get("allow_enroll")
+            
 
             st.caption(lang["user_enrollment_caption"].format(count=count, cap=cap_text))
             col1, col2 = st.columns(2)
-
+            if not all_enr:
+                
+                st.error(lang["enrollment_closed"])
             with col1:
                 enroll_label = lang["enroll_button"]
                 if is_full:
                     enroll_label = lang["enrollment_full"]
                 elif is_enrolled:
                     enroll_label=lang["enroll_button"]
-                elif not all_enr:
-                    enroll_label = lang["enrollment_closed"]
+
                 enroll_disabled = is_enrolled or is_full or not all_enr
                 enroll_clicked = st.button(enroll_label, key=f"enroll_{teacher_name}_{secure_id}", disabled=enroll_disabled, use_container_width=True) # Key uses secure_id
             with col2:
-                cancel_clicked = st.button(lang["cancel_button"], key=f"cancel_{teacher_name}_{secure_id}", disabled=not is_enrolled, use_container_width=True) # Key uses secure_id
+                cancel_clicked = st.button(lang["cancel_button"], key=f"cancel_{teacher_name}_{secure_id}", disabled=not is_enrolled or not all_enr, use_container_width=True) # Key uses secure_id
 
             # --- Button Actions (Using secure_id) ---
             if enroll_clicked:
