@@ -2,12 +2,17 @@
 import datetime
 import streamlit as st
 import json
+import calendar
 import os
+from zoneinfo import *
 import hmac
+import streamlit_autorefresh as st_autorefresh
 from streamlit_date_picker import date_range_picker, date_picker, PickerType
 import hashlib
 import pandas as pd
 import uuid
+from itertools import chain
+from datetime import timedelta
 import time
 from streamlit_star_rating import st_star_rating
 from googletrans import Translator, LANGUAGES # Using googletrans (unofficial)
@@ -18,6 +23,76 @@ try:
 except Exception as e:
     st.error(f"Translator init failed: {e}. Location/Subject translation may fail.")
     translator = None
+AUTOPLAY_DELAY_SECONDS = 7 
+APPROX_MESSAGE_AREA_HEIGHT_PX = 90
+BUTTON_HEIGHT_PX = 38 # Must match CSS
+SPACER_HEIGHT_PX = max(0, (APPROX_MESSAGE_AREA_HEIGHT_PX - BUTTON_HEIGHT_PX) // 2)
+
+def initialize_state(messages_data):
+    """Initializes session state variables if they don't exist."""
+    if 'current_index' not in st.session_state:
+        st.session_state.current_index = 0
+    if 'autoplay_on' not in st.session_state:
+        st.session_state.autoplay_on = True
+    if 'last_interaction_time' not in st.session_state:
+        st.session_state.last_interaction_time = time.time()
+    if 'messages_data' not in st.session_state or st.session_state.messages_data != messages_data:
+         st.session_state.messages_data = messages_data
+         st.session_state.current_index = 0
+         st.session_state.last_interaction_time = time.time()
+
+
+def display_message_content_for_carousel():
+    """Displays the current message content, styled to match the image."""
+    if not st.session_state.messages_data:
+        st.warning("No messages to display.")
+        return
+
+    idx = st.session_state.current_index
+    message_data = st.session_state.messages_data[idx]
+
+    # HTML structure for message content and bottom-right aligned user name
+    # No outer border on this div, styling is internal
+    message_html = f"""
+    <div style="position: relative;
+                min-height: {APPROX_MESSAGE_AREA_HEIGHT_PX}px; /* Helps with consistent layout */
+                padding: 10px 5px; /* Top/bottom, Left/right padding */
+                padding-bottom: 35px; /* Extra space for the user name at the bottom */
+                font-family: 'Source Sans Pro', sans-serif, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+                text-align: left;">
+        <div style="font-size: 1em; /* Standard text size */
+                    color: #262730; /* Dark text color, common in Streamlit */
+                    margin-bottom: 20px; /* Space between message and name */
+                    line-height: 1.6;">
+            "{message_data['message']}"
+        </div>
+        <div style="position: absolute;
+                    bottom: 5px; /* Position from bottom of parent */
+                    right: 5px;  /* Position from right of parent */
+                    font-size: 0.9em; /* Slightly smaller for attribution */
+                    color: #4A4A4A; /* Dark grey for user name */
+                    font-style: italic;">
+            — {message_data['user']}
+        </div>
+    </div>
+    """
+    st.markdown(message_html, unsafe_allow_html=True)
+
+
+def handle_autoplay(num_messages):
+    """Handles the automatic swiping logic."""
+    if not st.session_state.autoplay_on or num_messages <= 1: # No autoplay if 1 or 0 messages
+        return
+
+    st_autorefresh(interval=AUTOPLAY_DELAY_SECONDS * 1000, limit=None, key="autoplay_refresher")
+
+    current_time = time.time()
+    time_since_last_interaction = current_time - st.session_state.last_interaction_time
+
+    if time_since_last_interaction >= AUTOPLAY_DELAY_SECONDS:
+        st.session_state.current_index = (st.session_state.current_index + 1) % num_messages
+        st.session_state.last_interaction_time = current_time
+        st.rerun()
 
 @st.cache_data(ttl=3600)
 def translate_dynamic_text(_translator, text, target_lang_code):
@@ -55,7 +130,7 @@ texts = {
         "register_raz_label": "RAZ Level", # <-- Added RAZ Label
         "register_country_label": "Country", "register_state_label": "State/Province", "register_city_label": "City",
         "select_country": "--- Select Country ---", "select_state": "--- Select State/Province ---", "select_city": "--- Select City ---",
-        "fill_all_fields": "Please fill in Name and select a valid Country, State/Province, and City.", # RAZ not mandatory here, adjust if needed
+        "fill_all_fields": "Please fill in Name and select a valid Country, State/Province, City, and Time Zone.", # RAZ not mandatory here, adjust if needed
         "already_enrolled_warning": "Already enrolled.", "registered_success": "Registered {name}! Reloading page.", "you_marker": "You",
         "save_settings_button": "Save Settings", "settings_updated_success": "Settings updated successfully!", "class_info_header": "Class Information",
         "subject_en_label": "Subject (English)", "grade_label": "Grade", "enrollment_limit_header": "Enrollment Limit",
@@ -66,7 +141,7 @@ texts = {
         "teacher_dashboard_title": "Teacher Dashboard: {name}", "teacher_logout_button": "Logout", "teacher_login_title": "Teacher Portal Login",
         "teacher_id_prompt": "Enter your Teacher ID:", "login_button": "Login", "invalid_teacher_id_error": "Invalid Teacher ID.",
         "admin_dashboard_title": "Admin Dashboard", "admin_password_prompt": "Enter Admin Password:", "admin_access_granted": "Access granted.",
-        "refresh_data_button": "Refresh Data from Files", "manage_teachers_header": "Manage Teachers",
+        "refresh_data_button": "Refresh Data from Files", "manage_teachers_header": "Manage Teachers","enrollment_closed":"Enrollment Has Been Closed for this Class",
         "manage_teachers_info": "Add/edit details. Set cap=0 for unlimited. Use trash icon to remove.", "save_teachers_button": "Save Changes to Teachers",
         "manage_students_header": "Manage Registered Students", "save_students_button": "Save Changes to Students","save_s-t_button": "Save Changes",
         "manage_assignments_header": "Teacher-Student Assignments", "save_assignments_button": "Save Changes to Assignments",
@@ -78,7 +153,7 @@ texts = {
         "teacher_description_header": "Teacher Description",
         "no_description_available": "No description available.", # For Student View
         "admin_manage_teachers_desc_en": "Description EN", # Column header in Admin
-        "admin_manage_teachers_desc_zh": "Description ZH", # 
+        "admin_manage_teachers_desc_zh": "Description ZH", "selectzone":"Select your time zone"
     },
     "中文": {
         "ERR_NO_RATE":"请给老师一个评分！","RATED": "已在{time}完成对老师的反馈！感谢！","explanation":"请解释你为什么会给{name}老师打这个分数？",
@@ -95,7 +170,7 @@ texts = {
         "register_raz_label": "RAZ 等级", # <-- Added RAZ Label
         "register_country_label": "国家", "register_state_label": "州/省", "register_city_label": "城市",
         "select_country": "--- 选择国家 ---", "select_state": "--- 选择州/省 ---", "select_city": "--- 选择城市 ---",
-        "fill_all_fields": "请填写姓名并选择有效的国家、州/省和城市。", # RAZ not mandatory here, adjust if needed
+        "fill_all_fields": "请填写姓名并选择有效的国家、州/省、城市和时区。", # RAZ not mandatory here, adjust if needed
         "already_enrolled_warning": "已报名。", "registered_success": "已注册 {name}! 正在重新加载页面。", "you_marker": "你",
         "save_settings_button": "保存设置", "settings_updated_success": "设置已成功更新！", "class_info_header": "课程信息",
         "subject_en_label": "科目（英文）", "grade_label": "年级", "enrollment_limit_header": "报名人数限制",
@@ -118,7 +193,7 @@ texts = {
         "teacher_description_header": "教师描述", # 教师仪表板部分
         "no_description_available": "暂无描述。", # 学生视图
         "admin_manage_teachers_desc_en": "描述 EN", # 管理员中的列标题
-        "admin_manage_teachers_desc_zh": "描述 ZH", # 管理员中的列标题
+        "admin_manage_teachers_desc_zh": "描述 ZH", "selectzone":"请选择你的时区"
     }
 }
 # --- Simplified Location Data (English Only) ---
@@ -128,6 +203,76 @@ location_data = {
     "Canada": { "Ontario": ["Toronto", "Ottawa"], "Quebec": ["Montreal", "Quebec City"] },
     # Add more...
 }
+
+timezozs={
+    "China":"Asia/Shanghai"
+}
+# Define the order of days for consistent numerical representation
+DAYS_OF_WEEK = {
+    "monday": 0,
+    "tuesday": 1,
+    "wednesday": 2,
+    "thursday": 3,
+    "friday": 4,
+    "saturday": 5,
+    "sunday": 6,
+}
+MINUTES_IN_DAY = 24 * 60
+MINUTES_IN_WEEK = 7 * MINUTES_IN_DAY
+
+def time_str_to_minutes(time_str):
+
+    t = datetime.datetime.strptime(time_str, "%H:%M").time()
+    return t.hour * 60 + t.minute
+
+def get_date_for_day_of_week(current_date_str, target_day_name):
+
+
+    current_date = datetime.strptime(current_date_str, "%Y/%m/%d").date()
+
+
+    target_day_name_lower = target_day_name.lower()
+    if target_day_name_lower not in DAYS_OF_WEEK:
+        print(f"Error: Invalid target_day_name: {target_day_name}. Expected one of {list(DAYS_OF_WEEK.keys())}.")
+        return None
+
+    # Get the weekday number for the current date (Monday is 0 and Sunday is 6)
+    current_day_of_week_num = current_date.weekday()
+
+    # Get the weekday number for the target day
+    target_day_of_week_num = DAYS_OF_WEEK[target_day_name_lower]
+
+    # Calculate the difference in days
+    # This will find the target day within the current week (Mon-Sun)
+    # If current_day is Thursday (3) and target is Tuesday (1), diff is 1 - 3 = -2 days
+    # If current_day is Tuesday (1) and target is Thursday (3), diff is 3 - 1 = +2 days
+    day_difference = target_day_of_week_num - current_day_of_week_num
+
+    # Calculate the target date by adding the difference to the current date
+    target_date = current_date + timedelta(days=day_difference)
+
+    return target_date.strftime("%Y-%m-%d")
+def day_time_to_total_minutes(day_str, time_str):
+
+    day_str_lower = day_str.lower()
+    day_offset_minutes = DAYS_OF_WEEK[day_str_lower] * MINUTES_IN_DAY
+    time_offset_minutes = time_str_to_minutes(time_str)
+    return day_offset_minutes + time_offset_minutes
+
+def is_within_range(start_day_str,start_time_str,end_day_str,end_time_str,current_day_str,current_time_str):
+
+    start_total_minutes = day_time_to_total_minutes(start_day_str, start_time_str)
+    end_total_minutes = day_time_to_total_minutes(end_day_str, end_time_str)
+    current_total_minutes = day_time_to_total_minutes(current_day_str, current_time_str)
+
+
+    if end_total_minutes < start_total_minutes:
+
+        return current_total_minutes >= start_total_minutes or \
+               current_total_minutes <= end_total_minutes
+    else:
+
+        return start_total_minutes <= current_total_minutes <= end_total_minutes
 
 # --- File Database Helper Functions ---
 def load_data(path):
@@ -150,6 +295,9 @@ broadcasted_info = load_data(SWITCH_DB_PATH)
 if (broadcasted_info == {}):
     save_data(SWITCH_DB_PATH, {"rating":False,"all_hidden":False,"all_closed":False})
     broadcasted_info = load_data(SWITCH_DB_PATH)
+days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+        
 
 # --- Encryption & ID Generation ---
 if "secret_key" not in st.secrets: st.error("`secret_key` missing."); st.stop()
@@ -164,9 +312,50 @@ def validate_teacher_id(entered_id: str):
         if details.get("id") == entered_id: return name, details
     return None, None
 
+
+def find_date_of_day_in_current_week(target_day_name: str, reference_date: datetime.date = None) -> datetime.date:
+    if reference_date is None:
+        reference_date = datetime.date.today()
+
+    days_of_week = {
+        "monday": 0,
+        "tuesday": 1,
+        "wednesday": 2,
+        "thursday": 3,
+        "friday": 4,
+        "saturday": 5,
+        "sunday": 6,
+    }
+
+    target_day_name_lower = target_day_name.lower()
+    if target_day_name_lower not in days_of_week:
+        raise ValueError(
+            f"Invalid day name: '{target_day_name}'. "
+            f"Please use one of {list(days_of_week.keys())}."
+        )
+
+    target_weekday_int = days_of_week[target_day_name_lower]
+    reference_weekday_int = reference_date.weekday() # Monday is 0 and Sunday is 6
+
+    days_difference = target_weekday_int - reference_weekday_int
+
+    target_date = reference_date + datetime.timedelta(days=days_difference)
+    return target_date
+def is_date_in_range(start_date: datetime.date,end_date: datetime.date,date_to_check: datetime.date = None) -> bool:
+    
+    if date_to_check is None:
+        date_to_check = datetime.date.today()
+
+    # Ensure the range is valid (start_date should not be after end_date)
+    if start_date > end_date:
+        # print(f"Warning: start_date ({start_date}) is after end_date ({end_date}). Invalid range.")
+        return False
+
+    return start_date <= date_to_check <= end_date
 # --- Teacher Dashboard (Displaying Names from IDs) ---
 def teacher_dashboard():
     global teachers_database_global, enrollments_global
+
     admin_lang = texts["English"] # Teacher dashboard uses English UI elements for now
 
     # ... (Title, Logout, Refresh, Teacher Details Loading - unchanged) ...
@@ -179,10 +368,27 @@ def teacher_dashboard():
     if st.button(admin_lang["refresh"]): st.rerun()
     st.markdown("---")
     teacher_name = st.session_state.teacher_name
+    teacher_id = st.session_state.teacher_id
     current_teachers_db = load_data(TEACHERS_DB_PATH)
-    teacher_details = current_teachers_db.get(teacher_name)
+    teacher_details = current_teachers_db.get(teacher_id)
     if not teacher_details: st.error("Teacher data not found."); st.stop()
     ratt=teacher_details.get("rating",None)
+    if teacher_details.get("rated",None) != None:
+        if teacher_details.get("rated",None)==[]:
+            teacherratt = None
+        else:
+
+            teachrat = list(chain(*list(teacher_details.get("rated",None).values())))
+            print(teachrat)
+            smup = [m["stars"] for m in teachrat]
+            
+            teacherratt = sum(smup)
+            
+    else:
+        teacherratt = None
+    
+        
+    
     if (ratt != None and ratt.isdigit() and int(ratt)>=0):
         st_star_rating(label = admin_lang["class_rating"], maxValue = 5, defaultValue = int(teacher_details.get("rating","0")), key = "rating", read_only = True )
     else:
@@ -202,7 +408,7 @@ def teacher_dashboard():
     btn_key = "cancel_class_btn" if is_active else "reactivate_class_btn"
     new_status = not is_active
     if st.button(btn_label, key=btn_key):
-            current_teachers_db[teacher_name]["is_active"] = new_status
+            current_teachers_db[teacher_id]["is_active"] = new_status
             save_data(TEACHERS_DB_PATH, current_teachers_db); teachers_database_global = current_teachers_db
             st.success("Class status updated."); st.rerun()
 
@@ -218,7 +424,8 @@ def teacher_dashboard():
     btn_key1 = "block_enroll_btn" if allow_enr else "reactivate_enroll_btn"
     new_status1 = not allow_enr
     if st.button(btn_label1, key=btn_key1):
-            current_teachers_db[teacher_name]["allow_enroll"] = new_status1
+            current_teachers_db[teacher_id]["allow_enroll"] = new_status1
+            print(current_teachers_db[teacher_id]["allow_enroll"])
             save_data(TEACHERS_DB_PATH, current_teachers_db); teachers_database_global = current_teachers_db
             st.success("Enrollment status updated."); st.rerun()
 
@@ -239,7 +446,7 @@ def teacher_dashboard():
         submitted = st.form_submit_button(admin_lang["save_settings_button"])
         if submitted:
             processed_cap = int(new_cap) if new_cap > 0 else None
-            current_teachers_db[teacher_name].update({"subject_en": new_subject_en.strip(),"grade": new_grade.strip(),"enrollment_cap": processed_cap,"description_en": new_desc_en.strip(),"description_zh": new_desc_zh.strip()})
+            current_teachers_db[teacher_id].update({"subject_en": new_subject_en.strip(),"grade": new_grade.strip(),"enrollment_cap": processed_cap,"description_en": new_desc_en.strip(),"description_zh": new_desc_zh.strip()})
             save_data(TEACHERS_DB_PATH, current_teachers_db); teachers_database_global = current_teachers_db
             st.success(admin_lang["settings_updated_success"]); st.rerun()
 
@@ -250,7 +457,7 @@ def teacher_dashboard():
     current_enrollments = load_data(ENROLLMENTS_DB_PATH) # Load fresh enrollments (student IDs)
     user_db_for_display = load_data(USER_DB_PATH)     # Load fresh user data for name lookup
 
-    enrolled_student_ids = current_enrollments.get(teachers_database.get(teacher_name).get("id"), [])
+    enrolled_student_ids = current_enrollments.get(teacher_id, [])
     enrollment_count = len(enrolled_student_ids)
     display_cap = teacher_details.get("enrollment_cap") # None or int
     cap_text = admin_lang["unlimited"] if display_cap is None else str(display_cap)
@@ -303,7 +510,8 @@ def admin_route():
     # Data loading and preparation
     teachers_list = []; temp_teachers_db_for_edit = load_data(TEACHERS_DB_PATH); needs_saving_defaults = False
     for name, details in temp_teachers_db_for_edit.items():
-        if "id" not in details: details["id"] = generate_teacher_id(); needs_saving_defaults = True
+        
+        #if "id" not in details: details["id"] = generate_teacher_id(); needs_saving_defaults = True
         if "is_active" not in details: details["is_active"] = True; needs_saving_defaults = True
         if "enrollment_cap" not in details: details["enrollment_cap"] = None; needs_saving_defaults = True
         if "description_en" not in details: details["description_en"] = ""; needs_saving_defaults = True
@@ -311,7 +519,8 @@ def admin_route():
         if "rating" not in details: details["rating"] = None; needs_saving_defaults = True
         if "allow_enroll" not in details: details["allow_enroll"] = True; needs_saving_defaults = True
         if "rated" not in details: details["rated"] =[]; needs_saving_defaults = True
-        teachers_list.append({"Teacher ID": details["id"],"Teacher Name": name,"Subject (English)": details.get("subject_en", ""),"Description (English)": details.get("description_en", ""),"Description (Chinese)": details.get("description_zh", ""),"Grade": details.get("grade", ""),"Is Active": details.get("is_active"),"Rating": details.get("rating"),"Allow Enroll":details.get("allow_enroll"),"Enrollment Cap": details.get("enrollment_cap") if details.get("enrollment_cap") is not None else 0})
+        print(details)
+        teachers_list.append({"Teacher ID": name,"Teacher Name": details["name"],"Subject (English)": details.get("subject_en", ""),"Description (English)": details.get("description_en", ""),"Description (Chinese)": details.get("description_zh", ""),"Grade": details.get("grade", ""),"Is Active": details.get("is_active"),"Rating": details.get("rating"),"Allow Enroll":details.get("allow_enroll"),"Enrollment Cap": details.get("enrollment_cap") if details.get("enrollment_cap") is not None else 0})
 
     if needs_saving_defaults: 
         save_data(TEACHERS_DB_PATH, temp_teachers_db_for_edit); teachers_database_global = temp_teachers_db_for_edit; st.info("Applied defaults to teachers. Data saved.")
@@ -352,7 +561,7 @@ def admin_route():
                 rtd = original_teachers_data["name"]["rated"]
             else:
                 rtd=({})
-            new_teachers_database[name] = {"id": teacher_id,"subject_en": str(row["Subject (English)"]) if pd.notna(row["Subject (English)"]) else "","grade": str(row["Grade"]) if pd.notna(row["Grade"]) else "","description_en": desc_en,"description_zh": desc_zh,"is_active": current_is_active,"allow_enroll":allow_enroll,"enrollment_cap": processed_cap,"rated":rtd}
+            new_teachers_database[teacher_id] = {"name": name,"subject_en": str(row["Subject (English)"]) if pd.notna(row["Subject (English)"]) else "","grade": str(row["Grade"]) if pd.notna(row["Grade"]) else "","description_en": desc_en,"description_zh": desc_zh,"is_active": current_is_active,"allow_enroll":allow_enroll,"enrollment_cap": processed_cap,"rated":rtd}
         deleted_teacher_names = [n for n, d in original_teachers_data.items() if d.get("id") not in processed_ids]
         if not error_occurred:
             try:
@@ -360,7 +569,7 @@ def admin_route():
                 if deleted_teacher_names:
                     enrollments_updated = False; current_enrollments = load_data(ENROLLMENTS_DB_PATH); new_enrollments_after_delete = current_enrollments.copy()
                     for removed_name in deleted_teacher_names:
-                        if removed_name in new_enrollments_after_delete: del new_enrollments_after_delete[teachers_database.get(removed_name).get("id")]; enrollments_updated = True; st.warning(f"Removed enrollments: {removed_name}")
+                        if removed_name in new_enrollments_after_delete: del new_enrollments_after_delete[teachers_database_global.get(removed_name).get("id")]; enrollments_updated = True; st.warning(f"Removed enrollments: {removed_name}")
                     if enrollments_updated: save_data(ENROLLMENTS_DB_PATH, new_enrollments_after_delete); enrollments_global = new_enrollments_after_delete
                 st.rerun()
             except Exception as e: st.error(f"Failed to save teacher data: {e}")
@@ -373,13 +582,14 @@ def admin_route():
     # ... (Student list preparation and editor display - unchanged) ...
     students_list = []; temp_user_db_for_edit = load_data(USER_DB_PATH)
     for user_id, user_info in temp_user_db_for_edit.items():
-        if isinstance(user_info, dict): students_list.append({"Encrypted ID": user_id,"Name": user_info.get("name", ""),"Grade": user_info.get("grade", ""),"RAZ Level": user_info.get("raz_level", ""),"Country": user_info.get("country", ""),"State/Province": user_info.get("state", ""),"City": user_info.get("city", "")})
-        elif isinstance(user_info, str): students_list.append({"Encrypted ID": user_id, "Name": user_info, "Grade": "", "RAZ Level": "", "Country": "", "State/Province": "", "City": ""})
+        if isinstance(user_info, dict): students_list.append({"Encrypted ID": user_id,"Name": user_info.get("name", ""),"Grade": user_info.get("grade", ""),"RAZ Level": user_info.get("raz_level", ""),"Country": user_info.get("country", ""),"State/Province": user_info.get("state", ""),"City": user_info.get("city", ""),"Time Zone": user_info.get("timezone", "")})
+        elif isinstance(user_info, str): students_list.append({"Encrypted ID": user_id, "Name": user_info, "Grade": "", "RAZ Level": "", "Country": "", "State/Province": "", "City": "","Time Zone":""})
     students_df = pd.DataFrame(students_list) if students_list else pd.DataFrame(columns=["Encrypted ID", "Name", "Grade", "RAZ Level", "Country", "State/Province", "City"])
     edited_students_df = st.data_editor(students_df,num_rows="dynamic",key="student_editor",use_container_width=True,
-        column_config={"Encrypted ID": st.column_config.TextColumn(disabled=True),"Name": st.column_config.TextColumn(required=True),"Grade": st.column_config.TextColumn(),"RAZ Level": st.column_config.TextColumn(),"Country": st.column_config.TextColumn("Country Key"),"State/Province": st.column_config.TextColumn("State/Prov Key"),"City": st.column_config.TextColumn("City Key")},
-        column_order=["Encrypted ID", "Name", "Grade", "RAZ Level", "Country", "State/Province", "City"])
-
+        column_config={"Encrypted ID": st.column_config.TextColumn(disabled=True),"Name": st.column_config.TextColumn(required=True),"Grade": st.column_config.TextColumn(),"RAZ Level": st.column_config.TextColumn(),"Country": st.column_config.TextColumn("Country Key"),"State/Province": st.column_config.TextColumn("State/Prov Key"),"City": st.column_config.TextColumn("City Key"),"Time Zone":  st.column_config.TextColumn("Timezone Key")},
+        column_order=["Encrypted ID", "Name", "Grade", "RAZ Level", "Country", "State/Province", "City", "Time Zone"])
+    with st.expander("Time Zones:"):
+        st.dataframe({"Time Zones":list(available_timezones())})
     # Handle saving changes for students
     if st.button(admin_lang["save_students_button"]):
         original_ids = set(students_df["Encrypted ID"])
@@ -398,7 +608,7 @@ def admin_route():
             if pd.isna(name) or str(name).strip() == "": st.error(f"Row {index+1}: Name empty."); error_occurred = True; continue
             if pd.isna(user_id): st.error(f"Row {index+1}: ID missing."); error_occurred = True; continue
             clean_name=str(name).strip();clean_grade=str(row["Grade"]).strip() if pd.notna(row["Grade"]) else "";clean_raz=str(row["RAZ Level"]).strip() if pd.notna(row["RAZ Level"]) else "";clean_country=str(row["Country"]).strip() if pd.notna(row["Country"]) else "";clean_state=str(row["State/Province"]).strip() if pd.notna(row["State/Province"]) else "";clean_city=str(row["City"]).strip() if pd.notna(row["City"]) else ""
-            new_user_database[user_id] = {"name": clean_name, "grade": clean_grade, "raz_level": clean_raz,"country": clean_country, "state": clean_state, "city": clean_city}
+            new_user_database[user_id] = {"name": clean_name, "grade": clean_grade, "raz_level": clean_raz,"country": clean_country, "state": clean_state, "city": clean_city,"timezone":str(row["Time Zone"])}
             # No need to track name_changes for enrollments anymore
 
         if not error_occurred:
@@ -450,14 +660,16 @@ def admin_route():
     
     # Build the enriched list for the DataFrame
     for teacher, student_id_list in current_enrollments.items():
+        print(student_id_list)
         for student_id in student_id_list:
             
             details = user_db_for_assignments.get(student_id) # Lookup by ID
+            
             if isinstance(details, dict): # Found details
                 student_name = details.get("name", f"Unknown ID: {student_id}")
                 location_str = f"{details.get('city', '')}, {details.get('state', '')}, {details.get('country', '')}".strip(", ")
                 assignments_list_enriched.append({
-                    "Teacher": find_key_by_value(teachers_database_global, teacher),
+                    "Teacher": teachers_database_global[teacher]["name"],
                     "Student": student_name, # Display name
                     "Grade": details.get("grade", ""),
                     admin_lang["raz_level_column"]: details.get("raz_level", ""),
@@ -514,8 +726,12 @@ def admin_route():
 
         if tevent.selection.rows!=[]:
             selected_tid=teachers_df.loc[tevent.selection.rows[0],"Teacher ID"]
+            print(selected_tid)
             enrolled_students = current_enrollments.get(selected_tid)
-            students1_df = students_df[~students_df["Encrypted ID"].isin(enrolled_students)]
+            if enrolled_students != None:
+                students1_df = students_df[~students_df["Encrypted ID"].isin(enrolled_students)]
+            else:
+                students1_df = students_df
         else:
             students1_df=[]
         event = st.dataframe(
@@ -596,16 +812,160 @@ def admin_route():
             st.rerun()
     st.markdown("---")
     st.subheader("Automated Batch Actions (Proceed with Caution)")
+
     SWITCH=load_data(SWITCH_DB_PATH)
-    days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    
+    
+    infos = ""
+    dtf = []
+    enrinfo=broadcasted_info.get("Open Enrollment",False)
+    enrinfo1=broadcasted_info.get("Close Enrollment",False)
+    ratinfo=broadcasted_info.get("Open Ratings",False)
+    ratinfo1=broadcasted_info.get("Close Ratings",False)
 
-    # Dropdown for selecting a day
-    selected_day = st.selectbox("Select Class Date (Day) in for Each Week:", days_of_week)
+    if enrinfo:
+        deo = enrinfo[0]
+        teo = enrinfo[1]
+    else:
+        deo=None
+        teo=None
+    if ratinfo:
+        dro = ratinfo[0]
+        tro = ratinfo[1]
+    else:
+        dro=None
+        tro=None
+    if enrinfo1:
+        deo1 = enrinfo1[0]
+        teo1 = enrinfo1[1]
+    else:
+        deo1=None
+        teo1=None
+    if ratinfo1:
+        dro1 = ratinfo1[0]
+        tro1 = ratinfo1[1]
+    else:
+        dro1=None
+        tro1=None
+    edit_schedule = pd.DataFrame([{"Action":"Open Enrollment","Day (Monday, Tuesday, etc.)":deo, "Time (24 Hour Format in Hour:Min)":teo},{"Action":"Close Enrollment","Day (Monday, Tuesday, etc.)":deo1, "Time (24 Hour Format in Hour:Min)":teo1},{"Action":"Open Ratings","Day (Monday, Tuesday, etc.)":dro, "Time (24 Hour Format in Hour:Min)":tro},{"Action":"Close Ratings","Day (Monday, Tuesday, etc.)":dro1, "Time (24 Hour Format in Hour:Min)":tro1}])
+    edited_sched = st.data_editor(edit_schedule,disabled=["Action"],hide_index=True)
+    def _():
+        tasks = []
+        if enrinfo:
+            
+            tasks.append([enrinfo[0]+int(enrinfo[1].replace(":","")),enrinfo])
+            tasks.append([enrinfo1[0]+int(enrinfo1[1].replace(":","")),enrinfo1])
+            infos+=f"""
+            \nOpen Enrollments At {days_of_week[enrinfo[0]]} {enrinfo[1]}
+            \nClose Enrollments at {days_of_week[enrinfo1[0]]} {enrinfo1[1]}
+            """
+        
+        if ratinfo:
 
-    # Use datetime_range_picker to create a datetime range picker
-    start_time = st.time_input('Enter start time',0.time(8, 45))
+            tasks.append([ratinfo[0]+int(ratinfo[1].replace(":","")),ratinfo])
+            tasks.append([ratinfo1[0]+int(ratinfo1[1].replace(":","")),ratinfo1])
+        tasks.sort()
+        if infos!="":
+            print(tasks)
+            st.info("Current Automated Tasks set To (In Chronological Order):"+infos)
+        else:
+            st.info("No Tasks Yet!")
+        enr_closet,ratings_clos = st.tabs(["Enrollments","Ratings"])
+        # Dropdown for selecting a day
+        def _():
+            with classt:
+                selected_day = st.selectbox("Select Class Date (Day) in for Each Week:", days_of_week)
 
+                # Use datetime_range_picker to create a datetime range picker
+                start_time = st.time_input('Enter start time',datetime.time(8, 45))
+                today = datetime.datetime.today()
+                week_num = today.isocalendar()[2]
+        
+        with enr_closet:
+            with st.form("er"):
+                selected_day_open = st.selectbox("Select Enrollment Open Date (Day) for Each Week", days_of_week)
 
+                # Use datetime_range_picker to create a datetime range picker
+                opent = st.time_input('Enter Enrollment Start Time',datetime.time(8, 45))
+                
+                selected_day_close = st.selectbox("Select Enrollment Close Date (Day) for Each Week", days_of_week)
+
+                # Use datetime_range_picker to create a datetime range picker
+                openc = st.time_input('Enter Enrollment End Time',datetime.time(8, 45))
+                if st.form_submit_button("Update Enrollment Automation"):
+                        SWITCH["enrollmentS"] = [days_of_week.index(selected_day_open),opent.strftime('%H:%M:%S')]
+                        SWITCH["enrollmentE"] = [days_of_week.index(selected_day_close),openc.strftime('%H:%M:%S')]
+                        save_data(SWITCH_DB_PATH, SWITCH)
+                        st.rerun()
+        with ratings_clos:
+            with st.form("rat"):
+                selected_day_enable = st.selectbox("Select Rating Enable Date (Day) for Each Week", days_of_week)
+
+                # Use datetime_range_picker to create a datetime range picker
+                opene = st.time_input('Enter Rating Start Time',datetime.time(8, 45))
+                
+                selected_day_disable = st.selectbox("Select Rating Disable Date (Day) for Each Week", days_of_week)
+
+                # Use datetime_range_picker to create a datetime range picker
+                opend = st.time_input('Enter Rating End Time',datetime.time(8, 45))
+                if st.form_submit_button("Update Rating Automation"):
+                    SWITCH["rateS"] = [days_of_week.index(selected_day_enable),opene.strftime('%H:%M:%S')]
+                    SWITCH["rateE"] = [days_of_week.index(selected_day_disable),opend.strftime('%H:%M:%S')]
+                    save_data(SWITCH_DB_PATH, SWITCH)
+                    st.rerun()
+    save_sched = st.button("Save Schedule",key="save_sc")
+    if save_sched:
+
+        cpld = {}
+        erred = False
+        notsameday=False
+        notsametime=False
+        for i,scc in edited_sched.iterrows():
+            day_str = scc["Day (Monday, Tuesday, etc.)"]
+            date_string = scc["Time (24 Hour Format in Hour:Min)"]
+            if date_string != None:
+                try:
+                    dt=datetime.datetime.strptime(date_string, "%H:%M").time().strftime("%H:%M")
+                except ValueError:
+                    notsametime=True
+                    break
+            else:
+                dt=None
+            if (dt==None and day_str!=None) or (dt!=None and day_str==None):
+                erred=True
+                break
+            if day_str != None and day_str not in days_of_week:
+                notsameday=True
+                break
+            if day_str != None and date_string !=None:
+                cpld[scc["Action"]]=[day_str, dt]
+
+        if erred:
+            st.error("Make Sure that you Inputted BOTH the Day and the Time")
+        elif notsameday:
+            st.error("The Inputted day should be one of these 7: Monday, Tuesday, Wednsday, Thursday, Friday, Saturday, Sunday")
+        elif notsametime:
+            st.error("The Inputted day should be in the 24 Hour format and entered in the Hour:Minute way.")
+        elif cpld:
+            
+            if "Open Enrollment" in cpld and "Close Enrollment" not in cpld:
+                st.error("You need to also schedule Close Enrollment!")
+            elif "Open Enrollment" not in cpld and "Close Enrollment" in cpld:
+                st.error("You need to also schedule Open Enrollment!")
+            elif "Open Rating" in cpld and "Close Rating" not in cpld:
+                st.error("You need to also schedule Close Rating!")
+            elif "Open Rating" not in cpld and "Close Rating" in cpld:
+                st.error("You need to also schedule Open Rating!")
+            else:
+                # Get the current date and time
+                now = datetime.datetime.now()
+                #print(find_date(current_year,current_month,current_week, ))
+                for m in cpld:
+                    SWITCH[m] = cpld[m]
+                    SWITCH[m+" Date"]=datetime.datetime.combine(find_date_of_day_in_current_week(cpld[m][0],datetime.date.today()), datetime.datetime.strptime(cpld[m][1], "%H:%M").time()).strftime("%Y-%m-%d %H:%M")
+                print(SWITCH)
+                save_data(SWITCH_DB_PATH, SWITCH)
+                st.rerun()
     st.markdown("---")
 
     st.subheader("Manual Batch Actions (Proceed with Caution)")
@@ -659,6 +1019,7 @@ def admin_route():
                 teaches[info]["allow_enroll"] = False
         save_data(TEACHERS_DB_PATH, teaches)
         save_data(SWITCH_DB_PATH, SWITCH)
+        print(SWITCH)
         st.rerun()
     
     if rate_all:
@@ -684,8 +1045,11 @@ def teacher_login_page():
     if st.button("Login", key="teacher_login_submit"):
         if not entered_id: st.warning("Please enter ID.")
         else:
-            teacher_name, teacher_details = validate_teacher_id(entered_id) # Uses validate_teacher_id
-            if teacher_name:
+
+            current_teachers_db = load_data(TEACHERS_DB_PATH) 
+            teacher_det = current_teachers_db.get(entered_id) # Uses validate_teacher_id
+            teacher_name = teacher_det.get("name")
+            if teacher_det and teacher_name:
                 # Set session state
                 st.session_state.teacher_logged_in = True
                 st.session_state.teacher_id = entered_id
@@ -726,7 +1090,8 @@ else:
     user_database = load_data(USER_DB_PATH)
     teachers_database = load_data(TEACHERS_DB_PATH)
     enrollments = load_data(ENROLLMENTS_DB_PATH) # Contains {teacher: [student_id,...]}
-
+    
+            
     # --- REGISTRATION Section (Unchanged) ---
     if secure_id not in user_database:
         # ... (Registration code remains the same - saves name, grade, raz, location keyed by secure_id) ...
@@ -741,16 +1106,128 @@ else:
         city_options = [lang["select_city"]];
         if selected_state != lang["select_state"] and selected_country in location_data and selected_state in location_data[selected_country]: city_options.extend(sorted(location_data[selected_country][selected_state]))
         selected_city = st.selectbox(lang["register_city_label"], options=city_options, key="reg_city", index=0, disabled=(selected_state == lang["select_state"]), format_func=format_location)
+        selected_zone=st.selectbox(lang["selectzone"], options = [None]+list(available_timezones()), key = "timezone")
         st.markdown("---")
         if st.button(lang["register_button"], key="register_btn"):
-            if new_user_name.strip() and selected_country != lang["select_country"] and selected_state != lang["select_state"] and selected_city != lang["select_city"]:
-                user_data_to_save = {"name": new_user_name.strip(),"grade": new_user_grade.strip(),"raz_level": new_user_raz.strip(),"country": selected_country, "state": selected_state, "city": selected_city}
+            if new_user_name.strip() and new_user_raz and  selected_zone and selected_country != lang["select_country"] and selected_state != lang["select_state"] and selected_city != lang["select_city"]:
+                user_data_to_save = {"name": new_user_name.strip(),"grade": new_user_grade.strip(),"raz_level": new_user_raz.strip(),"country": selected_country, "state": selected_state, "city": selected_city,"timezone":selected_zone}
                 user_database[secure_id] = user_data_to_save
                 save_data(USER_DB_PATH, user_database); user_database_global = user_database
                 st.success(lang["registered_success"].format(name=new_user_name.strip())); st.balloons(); time.sleep(1); st.rerun()
             else: st.error(lang["fill_all_fields"])
         st.stop()
+    
+    enrinfo=broadcasted_info.get("Open Enrollment",False)
+    enrinfo1=broadcasted_info.get("Close Enrollment",False)
+    ratinfo=broadcasted_info.get("Open Ratings",False)
+    ratinfo1=broadcasted_info.get("Close Ratings",False)
+    usrcnt = user_database[secure_id]["timezone"]
+    if enrinfo and enrinfo[0]!=None:
+        # Assign the source time zone
+        source_dt = datetime.datetime.now().replace(tzinfo=ZoneInfo("UTC"))  # Example: UTC
+        # Convert to the target time zone
+        converted_dt = source_dt.astimezone(ZoneInfo(usrcnt))  # Example: Asia/Shanghai
+        print(converted_dt.strftime("%H:%M"))
+        intime=is_within_range(enrinfo[0],enrinfo[1],enrinfo1[0],enrinfo1[1], converted_dt.strftime("%A"),converted_dt.strftime("%H:%M"))
+        
+        date_cond=((days_of_week.index(converted_dt.strftime("%A"))>=days_of_week.index(enrinfo[0]))) and (days_of_week.index(converted_dt.strftime("%A"))<=days_of_week.index(enrinfo1[0])) 
+        time_cond=(converted_dt.time() >= datetime.datetime.strptime(enrinfo[1],"%H:%M").time()) and (converted_dt.time() <= datetime.datetime.strptime(enrinfo1[1],"%H:%M").time())
+        time_cond1=(converted_dt.time() >= datetime.datetime.strptime(enrinfo1[1],"%H:%M").time())
+        date_cond1=(days_of_week.index(converted_dt.strftime("%A"))>=days_of_week.index(enrinfo1[0]))
+        
+        addd = False
+        if date_cond and time_cond:
+            addd=True
+        elif (days_of_week.index(converted_dt.strftime("%A"))==days_of_week.index(enrinfo1[0])) and time_cond:
+            addd=True
+        elif (days_of_week.index(enrinfo[0])==days_of_week.index(enrinfo1[0])) and time_cond:
+            addd=True
+        elif date_cond and (days_of_week.index(converted_dt.strftime("%A"))!=days_of_week.index(enrinfo1[0])):
+            addd=True
+        
+        addd1 = False
+        if date_cond1 and time_cond1:
+            addd1=True
+        
+        elif (days_of_week.index(enrinfo[0])==days_of_week.index(enrinfo1[0])) and time_cond1:
+            addd1=True
+        elif (days_of_week.index(enrinfo[0])!=days_of_week.index(enrinfo1[0])) and date_cond1:
+            addd1=True
+        elif (days_of_week.index(converted_dt.strftime("%A"))==days_of_week.index(enrinfo1[0])) and time_cond:
+            addd1=False
+        print(f"bruh:{intime}")
+        print((enrinfo[0],enrinfo[1],enrinfo1[0],enrinfo1[1], converted_dt.strftime("%A"),converted_dt.strftime("%H:%M")))
+        
+        if broadcasted_info["all_closed"] and intime:
+            print("wh")
+            broadcasted_info["all_closed"]=False
+            for info in teachers_database_global:
+                teachers_database_global[info]["allow_enroll"] = True
+            save_data(SWITCH_DB_PATH, broadcasted_info)
+            save_data(TEACHERS_DB_PATH, teachers_database_global)
+            
+            st.rerun()
 
+        elif (not broadcasted_info["all_closed"]) and (not intime):
+            broadcasted_info["all_closed"]=True
+            print("wh1")
+            for info in teachers_database_global:
+                teachers_database_global[info]["allow_enroll"] = False
+            save_data(SWITCH_DB_PATH, broadcasted_info)
+            save_data(TEACHERS_DB_PATH, teachers_database_global)
+            st.rerun()
+    
+    if ratinfo and ratinfo[0]!=None:
+        # Assign the source time zone
+        source_dt = datetime.datetime.now().replace(tzinfo=ZoneInfo("UTC"))  # Example: UTC
+        # Convert to the target time zone
+        converted_dt = source_dt.astimezone(ZoneInfo(usrcnt))  # Example: Asia/Shanghai
+        intime=is_within_range(ratinfo[0],ratinfo[1],enrinfo1[0],ratinfo1[1], converted_dt.strftime("%A"),converted_dt.strftime("%H:%M"))
+        #print(days_of_week.index(converted_dt.strftime("%A"))>=days_of_week.index(ratinfo[0]))
+        #print(broadcasted_info,(converted_dt.time() < datetime.datetime.strptime(ratinfo1[1],"%H:%M").time()))
+        #print(broadcasted_info["rating"],days_of_week.index(converted_dt.strftime("%A")),days_of_week.index(ratinfo[0]),days_of_week.index(ratinfo1[0]))
+        date_cond=((days_of_week.index(converted_dt.strftime("%A"))>=days_of_week.index(ratinfo[0]))) and (days_of_week.index(converted_dt.strftime("%A"))<=days_of_week.index(ratinfo1[0])) 
+        time_cond=(converted_dt.time() >= datetime.datetime.strptime(ratinfo[1],"%H:%M").time()) and (converted_dt.time() <= datetime.datetime.strptime(ratinfo1[1],"%H:%M").time())
+        time_cond1=(converted_dt.time() >= datetime.datetime.strptime(ratinfo1[1],"%H:%M").time())
+        date_cond1=(days_of_week.index(converted_dt.strftime("%A"))>=days_of_week.index(ratinfo1[0]))
+        #print(days_of_week.index(converted_dt.strftime("%A")), days_of_week.index(ratinfo[0]), days_of_week.index(ratinfo1[0]))
+        #print(f"date_cond:{date_cond}",f"time_cond:{time_cond}",f"time_cond1:{time_cond1}",f"date_cond1:{date_cond1}")
+        addd = False
+        if date_cond and time_cond:
+            addd=True
+        elif (days_of_week.index(converted_dt.strftime("%A"))==days_of_week.index(ratinfo1[0])) and time_cond:
+            addd=True
+        elif (days_of_week.index(ratinfo[0])==days_of_week.index(ratinfo1[0])) and time_cond:
+            
+            addd=True
+        elif (days_of_week.index(ratinfo[0])!=days_of_week.index(ratinfo1[0])) and time_cond:
+            
+            addd=True
+        addd1 = False
+        if date_cond1 and time_cond1:
+
+            addd1=True
+        elif (days_of_week.index(ratinfo[0])==days_of_week.index(ratinfo1[0])) and time_cond1:
+            
+            addd1=True
+        elif (days_of_week.index(ratinfo[0])!=days_of_week.index(ratinfo1[0])) and date_cond1:
+            
+            addd1=True
+
+        if (not broadcasted_info["rating"]) and intime:
+            print("wh")
+            broadcasted_info["rating"] = True
+            save_data(SWITCH_DB_PATH, broadcasted_info)
+            st.rerun()
+        
+        elif (broadcasted_info["rating"]) and (not intime):
+            print("wh")
+            broadcasted_info["rating"] = False
+            broadcasted_info["Open Ratings Date"]=(datetime.datetime.strptime(broadcasted_info["Open Ratings Date"],"%Y-%m-%d %H:%M")+timedelta(days=7)).strftime("%Y-%m-%d %H:%M")
+            broadcasted_info["Close Ratings Date"]=(datetime.datetime.strptime(broadcasted_info["Close Ratings Date"],"%Y-%m-%d %H:%M")+timedelta(days=7)).strftime("%Y-%m-%d %H:%M")
+            save_data(SWITCH_DB_PATH, broadcasted_info)
+            st.rerun()
+            
     # --- MAIN ENROLLMENT Section ---
     user_info = user_database.get(secure_id) # Get current user's details
     if isinstance(user_info, dict): user_name = user_info.get("name", f"Unknown ({secure_id})") # Display name but use ID internally
@@ -809,8 +1286,8 @@ else:
 
             for teacher_name, teacher_info in filtered_teachers.items():
                 
-                st.subheader(teacher_name)
-                
+                st.subheader(teachers_database[teacher_name]["name"])
+
                 
         # ... (Class Status display and buttons - unch
                 # ... (Display Subject/Grade/Description - unchanged) ...
@@ -832,17 +1309,16 @@ else:
                 # --- Enrollment status/buttons (Using secure_id) ---
                 
                 
-                current_teacher_enrollment_ids = enrollments.get(teachers_database.get(teacher_name).get("id"), []) # Get list of IDs
+                current_teacher_enrollment_ids = enrollments.get(teacher_name, []) # Get list of IDs
                 count = len(current_teacher_enrollment_ids)
                 cap = teacher_info.get("enrollment_cap"); cap_text = lang["unlimited"] if cap is None else str(cap)
                 is_full = False if cap is None else count >= cap
                 
 
                 # Check enrollment based on the current user's secure_id
+                
                 is_enrolled = secure_id in current_teacher_enrollment_ids
                 all_enr = teacher_info.get("allow_enroll")
-                
-
                 st.caption(lang["user_enrollment_caption"].format(count=count, cap=cap_text))
                 col1, col2 = st.columns(2)
                 if not all_enr:
@@ -858,40 +1334,56 @@ else:
                     enroll_disabled = is_enrolled or is_full or not all_enr
                     enroll_clicked = st.button(enroll_label, key=f"enroll_{teacher_name}_{secure_id}", disabled=enroll_disabled, use_container_width=True) # Key uses secure_id
                 with col2:
+                    print(f"yoo:{is_enrolled}")
                     cancel_clicked = st.button(lang["cancel_button"], key=f"cancel_{teacher_name}_{secure_id}", disabled=not is_enrolled or not all_enr, use_container_width=True) # Key uses secure_id
-
+                SWITCH=load_data(SWITCH_DB_PATH)
+                all_c = SWITCH["all_closed"]
+                all_h = SWITCH["all_hidden"]
+                all_r = SWITCH["rating"]
                 # --- Button Actions (Using secure_id) ---
                 if enroll_clicked:
+                    if all_c or all_h or all_r:
+                        print("wh")
+                        st.rerun()
                     # Re-check conditions on click, use secure_id
                     enrollments_now = load_data(ENROLLMENTS_DB_PATH) # Load fresh
-                    teacher_id_list_now = enrollments_now.get(teachers_database.get(teacher_name).get("id"), [])
-                    teacher_info_now = load_data(TEACHERS_DB_PATH).get(teachers_database.get(teacher_name).get("id"), {})
+                    print(f"huh:{teacher_name}")
+                    teacher_id_list_now = enrollments_now.get(teacher_name, [])
+                    teacher_info_now = load_data(TEACHERS_DB_PATH).get(teacher_name, {})
                     cap_now = teacher_info_now.get("enrollment_cap")
                     is_full_now = False if cap_now is None else len(teacher_id_list_now) >= cap_now
 
                     if secure_id not in teacher_id_list_now and not is_full_now:
                         teacher_id_list_now.append(secure_id) # <-- Add secure_id
-                        enrollments_now[teachers_database.get(teacher_name).get("id")] = teacher_id_list_now
+                        enrollments_now[teacher_name] = teacher_id_list_now
                         save_data(ENROLLMENTS_DB_PATH, enrollments_now)
+                        
                         enrollments_global = enrollments_now # Update global state if needed
-                        st.success(lang["enroll_success"].format(name=user_name, teacher=teacher_name))
+                        st.success(lang["enroll_success"].format(name=user_name, teacher=teachers_database[teacher_name]["name"]))
                         st.rerun()
                     # No explicit else needed for already enrolled/full, button is disabled
 
+
                 if cancel_clicked:
+                    
+                    if all_c or all_h or all_r:
+                        print("wh")
+                        st.rerun()
+                    
                     # Use secure_id for removal
                     enrollments_now = load_data(ENROLLMENTS_DB_PATH) # Load fresh
                     
-                    if teachers_database.get(teacher_name).get("id") in enrollments_now and secure_id in enrollments_now[teachers_database.get(teacher_name).get("id")]:
+                    if teacher_name in enrollments_now and secure_id in enrollments_now[teacher_name]:
                         
-                        enrollments_now[teachers_database.get(teacher_name).get("id")].remove(secure_id) # <-- Remove secure_id
-                        if not enrollments_now[teachers_database.get(teacher_name).get("id")]: # Remove teacher key if list empty
-                            del enrollments_now[teachers_database.get(teacher_name).get("id")]
+                        enrollments_now[teacher_name].remove(secure_id) # <-- Remove secure_id
+                        if not enrollments_now[teacher_name]: # Remove teacher key if list empty
+                            del enrollments_now[teacher_name]
                         save_data(ENROLLMENTS_DB_PATH, enrollments_now)
                         enrollments_global = enrollments_now # Update global state if needed
                         st.info(lang["enrollment_cancelled"])
                         st.rerun()
                     # No explicit else needed, button disabled if not enrolled
+
 
                 # --- Enrollment List Expander (Display names from IDs) ---
                 with st.expander(f"{lang['enrolled_label']} ({count})"):
@@ -920,7 +1412,6 @@ else:
     else:
         st.title(lang["page_title_rate"])
         if st.sidebar.button(lang["refresh"]): st.rerun()
-
         # --- Teacher Search and Filter (Unchanged) ---
         # ... (Search/Filter logic remains the same) ...
         st.subheader(lang["teacher_search_label"]); col_search, col_grade_filter = st.columns([3, 2])
@@ -952,7 +1443,7 @@ else:
 
             for teacher_name, teacher_info in filtered_teachers.items():
                 
-                st.subheader(teacher_name)
+                st.subheader(teachers_database[teacher_name]["name"])
                 
                 
         # ... (Class Status display and buttons - unch
@@ -968,7 +1459,16 @@ else:
                 else: st.caption(f"_{lang['no_description_available']}_")
                 ratt=teacher_info.get("rating",None)
                 with st.form(teacher_name):
-                    datet = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    SWITCH=load_data(SWITCH_DB_PATH)
+                    all_c = SWITCH["all_closed"]
+                    all_h = SWITCH["all_hidden"]
+                    all_r = SWITCH["rating"]
+                    start_t = SWITCH["Open Ratings Date"]
+                    end_t = SWITCH["Close Ratings Date"]
+                    source_dt = datetime.datetime.now().replace(tzinfo=ZoneInfo("UTC"))  # Example: UTC
+                    # Convert to the target time zone
+                    converted_dt = source_dt.astimezone(ZoneInfo(usrcnt))  # Example: Asia/Shanghai
+                    datet=converted_dt.strftime('%Y-%m-%d %H:%M:%S')
                     if (secure_id in teachers_database[teacher_name]["rated"].keys()):
                         st.success(lang["RATED"].format(time=datet))
                         dfv = teachers_database[teacher_name]["rated"][secure_id][-1]["stars"]
@@ -976,21 +1476,35 @@ else:
                     else:
                         dfv_txt = ""
                         dfv=0
-                    rating = st_star_rating(label = lang["rate_class"].format(name=teacher_name), maxValue = 5, defaultValue = dfv, read_only = False )
+                    rating = st_star_rating(label = lang["rate_class"].format(name=teachers_database[teacher_name]["name"]), maxValue = 5, defaultValue = dfv, read_only = False )
                     
-                    txt = st.text_area(lang["explanation"].format(name=teacher_name),dfv_txt)
+                    txt = st.text_area(lang["explanation"].format(name=teachers_database[teacher_name]["name"]),dfv_txt)
                     btn_form = st.form_submit_button()
+                    
                     if btn_form:
+
+                        if (not all_r) or all_h or (not all_c):
+                            print("wh")
+                            st.rerun()
                         if rating == 0:
                             st.error(lang["ERR_NO_RATE"])
                         else:
+                            print("ww")
                             rate_stu=teachers_database[teacher_name]["rated"]
                             if (rate_stu.get(secure_id, True)):
                                 rate_stu[secure_id]=[]
-                            rate_stu[secure_id].append({"date":datet,"stars": rating, "feedback":txt})
+                            dates = [sub['date'] for sub in rate_stu[secure_id]]
+
+                            try:
+                                idxd=dates.index(start_t)
+                                rate_stu[secure_id][idxd] = {"date":start_t,"stars": rating, "feedback":txt}
+                            except ValueError:
+                                rate_stu[secure_id].append({"date":start_t,"stars": rating, "feedback":txt})
+                            
                             save_data(TEACHERS_DB_PATH, teachers_database)
                             
                             st.rerun()
+
                         
 
                 st.markdown("---") # Separator between teachers
