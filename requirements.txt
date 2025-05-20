@@ -1,6 +1,6 @@
 streamlit
 pandas
 googletrans==4.0.0-rc1
-streamlit_autorefresh
-streamlit_date_picker
-streamlit_star_rating
+streamlit-autorefresh
+streamlit-date-picker
+streamlit-star-rating
