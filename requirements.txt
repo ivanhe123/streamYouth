@@ -8,3 +8,4 @@ streamlit-autorefresh
 streamlit_geolocation
 timezonefinder
 reverse_geocoder
+pycountry
