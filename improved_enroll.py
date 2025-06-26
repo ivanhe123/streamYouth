@@ -1,6 +1,13 @@
 # Required library: pip install googletrans==4.0.0-rc1 streamlit pandas
 import datetime
 import streamlit as st
+from streamlit_geolocation import streamlit_geolocation
+from timezonefinder import TimezoneFinder
+import pytz
+import reverse_geocoder as rg  # For reverse geocoding
+import pycountry             # For getting country name from code
+
+import pycountry
 import json
 import shutil
 import calendar
@@ -16,6 +23,7 @@ import uuid
 from itertools import chain
 from datetime import timedelta
 import time
+from streamlit_geolocation import streamlit_geolocation
 from streamlit_star_rating import st_star_rating
 
 # --- Translation Setup (ONLY for dynamic content) ---
@@ -94,10 +102,107 @@ def handle_autoplay(num_messages):
 
 def string_to_delta(string):
     splted=string.split(" days, ")
-    hours, minutes, seconds = map(int, splted[1].split(':'))
-    return datetime.timedelta(days=int(splted[0]),hours=hours,minutes=minutes,seconds=seconds)
+    if len(splted)==1:
+        hours, minutes, seconds = map(int, splted[0].split(':'))
+        return datetime.timedelta(hours=hours, minutes=minutes, seconds=seconds)
+    else:
+        hours, minutes, seconds = map(int, splted[1].split(':'))
+        return datetime.timedelta(days=int(splted[0]),hours=hours,minutes=minutes,seconds=seconds)
 
+def string_to_params(string):
 
+    splted = string.split(" days, ")
+    if len(splted) == 1:
+        hours, minutes, seconds = map(int, splted[0].split(':'))
+        return 0, hours, minutes, seconds
+    else:
+        hours, minutes, seconds = map(int, splted[1].split(':'))
+        return int(splted[0]), hours, minutes, seconds
+
+def get_timezone_from_location_name(country_name_or_code, city_name, state_province_name=None):
+    """
+    Attempts to find the IANA timezone string for a given location (country, city, optionally state/province)
+    using the offline geonamescache library.
+
+    Args:
+        country_name_or_code (str): The full country name (e.g., "United States") or its ISO 3166-1 alpha-2 code (e.g., "US").
+        city_name (str): The name of the city.
+        state_province_name (str, optional): The name of the state or province.
+                                             This helps disambiguate cities with the same name. Defaults to None.
+
+    Returns:
+        str or None: The IANA timezone string (e.g., "America/New_York") if found, otherwise None.
+    """
+    gc = geonamescache.GeonamesCache()
+
+    # 1. Normalize country input to country code
+    country_code = None
+    countries_data = gc.get_countries() # Dict of country_code: {details}
+    country_name_or_code_lower = country_name_or_code.lower()
+
+    if len(country_name_or_code_lower) == 2: # Assume it's a code
+        if country_name_or_code_lower.upper() in countries_data:
+            country_code = country_name_or_code_lower.upper()
+    else: # Assume it's a name
+        for code, details in countries_data.items():
+            if details.get('name', '').lower() == country_name_or_code_lower:
+                country_code = code
+                break
+            # Check common aliases or alternative names if needed (more complex)
+
+    if not country_code:
+        # print(f"Debug: Country '{country_name_or_code}' not found in geonamescache.")
+        return None
+
+    # 2. Get cities and filter by country and name
+    cities_data = gc.get_cities() # Dict of city_id: {details}
+    candidate_cities = []
+    city_name_lower = city_name.lower()
+    state_province_name_lower = state_province_name.lower() if state_province_name else None
+
+    for city_id, city_details in cities_data.items():
+        if city_details.get('countrycode') == country_code and \
+           city_details.get('name', '').lower() == city_name_lower:
+
+            # If state/province is provided, try to match it
+            if state_province_name_lower:
+                # 'admin1' in geonamescache city data often holds the state/province name or code.
+                # It might not always be the full name, could be an abbreviation or code.
+                city_admin1 = city_details.get('admin1', '').lower()
+                if state_province_name_lower in city_admin1 or city_admin1 in state_province_name_lower : # Partial match
+                    candidate_cities.append(city_details)
+                # For more precise matching, you might need admin1 code lookup if available
+            else:
+                candidate_cities.append(city_details)
+
+    if not candidate_cities:
+        # print(f"Debug: City '{city_name}' in country '{country_code}' not found.")
+        return None
+
+    # 3. Handle multiple matches or get timezone
+    # If multiple cities match (e.g., "Springfield" in "US"), prioritize by population or return first valid.
+    # For simplicity, we'll take the first one with a valid timezone.
+    # A more robust solution might sort by population if available (city_details.get('population'))
+    # or require state/province if multiple are found without it.
+
+    found_timezone = None
+    for city_info in sorted(candidate_cities, key=lambda c: c.get('population', 0), reverse=True): # Prioritize by population
+        tz_name = city_info.get('timezone')
+        if tz_name:
+            # Validate if it's a known timezone by pytz to be safe
+            try:
+                pytz.timezone(tz_name)
+                found_timezone = tz_name
+                break # Found a valid timezone for a matching city
+            except pytz.exceptions.UnknownTimeZoneError:
+                # print(f"Debug: Geonamescache listed timezone '{tz_name}' for {city_name} but pytz doesn't know it.")
+                continue # Try next candidate city if any
+
+    if found_timezone:
+        return found_timezone
+    else:
+        # print(f"Debug: No valid timezone found for the specified location criteria among candidates.")
+        return None
 # --- End Translation Setup ---
 
 # --- Configuration ---
@@ -111,7 +216,7 @@ SWITCH_DB_PATH = "switch.json"
 # --- RESTORED Bilingual Texts Dictionary (for UI elements) ---
 texts = {
     "English": {
-        "ERR_NO_RATE": "Please give the teacher a Feedback!",
+        "ERR_NO_RATE": "Please give the teacher a Feedback!", "autcompl":"Autocomplete Location and Timezone info (might take a few seconds)","mancompl":"Enter Manually",
         "RATED": "Finished Feedback this teacher at {time}! Thank You!",
         "explanation": "Explain why did you give {name} this rating",
         "page_title": "PLE Youth Enrollment", "language_label": "Choose Language",
@@ -121,7 +226,7 @@ texts = {
         "teaches": "Teaches", "to_grade": "grade", "enroll_button": "Enroll", "cancel_button": "Cancel Enrollment",
         "enroll_success": "Thank you, {name}! You are now enrolled in {teacher}'s class!",
         "enrollment_cancelled": "Enrollment has been cancelled.",
-        "register_prompt": "Welcome! Please register by entering the student's details below:",
+        "register_prompt": "Welcome! Please register by entering the student's details below:", "teach_reg_p":"Welcome! Please register by entering some information about yourself",
         "register_button": "Register",
         "logged_in": "Logged in as: {name}", "enrolled_label": "Enrolled Students",
         "no_enrollments": "No students enrolled yet.", "no_rates": "You Didn't have any teacher to rate.",
@@ -131,8 +236,8 @@ texts = {
         "enrollment_full": "Enrollment Full", "no_teachers_rating_available": "No teacher available for you to rate.",
         "user_enrollment_caption": "Enrolled: {count} / {cap}", "unlimited": "Unlimited",
         "grade_select_label": "Select Grade",
-        "all_grades": "All", "refresh": "Refresh", "register_name_label": "Student's English Full Name",
-        "register_grade_label": "Current Grade",
+        "all_grades": "All", "refresh": "Refresh", "register_name_label": "Student's English Full Name", "reg_name_t":"Your English Full Name",
+        "register_grade_label": "Current Grade", "reg_g_t":"The Grade You Teach (You can change it afterwards)", "reg_c_t":"The Course You Teach (You can change it afterwards)", "reg_desc":"A little Description about yourself or your Teaching Experience (You can change it afterwards)",
         "register_raz_label": "RAZ Level",  # <-- Added RAZ Label
         "register_country_label": "Country", "register_state_label": "State/Province", "register_city_label": "City",
         "select_country": "--- Select Country ---", "select_state": "--- Select State/Province ---",
@@ -178,7 +283,7 @@ texts = {
         "admin_manage_teachers_desc_zh": "Description ZH", "selectzone": "Select your time zone"
     },
     "中文": {
-        "ERR_NO_RATE": "请给老师一个评分！", "RATED": "已在{time}完成对老师的反馈！感谢！",
+        "ERR_NO_RATE": "请给老师一个评分！", "RATED": "已在{time}完成对老师的反馈！感谢！","autcompl":"自动输入位置并时区信息（处理需要几秒钟）","mancompl":"手动输入",
         "explanation": "请解释你为什么会给{name}老师打这个分数？",
         "page_title": "PLE Youth 教师搜索与注册", "language_label": "选择语言",
         "teacher_search_label": "请输入教师姓名搜索：", "page_title_rate": "PLE Youth 教师搜索与评分",
@@ -186,15 +291,15 @@ texts = {
         "enter_teacher_info": "正在显示所有可用教师。使用上方搜索框筛选。",
         "teaches": "授课", "to_grade": "年级", "enroll_button": "报名", "cancel_button": "取消报名",
         "enroll_success": "谢谢, {name}! 你已注册到 {teacher} 的课程！", "enrollment_cancelled": "报名已取消。",
-        "register_prompt": "欢迎！请通过输入学生的详细信息完成注册：", "register_button": "注册",
+        "register_prompt": "欢迎！请通过输入学生的详细信息完成注册：", "register_button": "注册", "teach_reg_p":"欢迎！请输入你的一些信息完成注册：",
         "logged_in": "已登录: {name}", "enrolled_label": "已报名的学生", "no_enrollments": "当前没有报名的学生。",
         "no_rates": "当前没有可反馈的老师",
         "not_enrolled": "未找到你的报名记录。", "name_required": "请输入你的名字以注册。",
         "no_teachers_available": "目前没有可报名的教师。", "enrollment_full": "报名已满",
         "enrollment_closed": "此课程报名以关闭", "no_teachers_rating_available": "你当前没有可评分的老师",
         "user_enrollment_caption": "已报名: {count} / {cap}", "unlimited": "无限制", "grade_select_label": "选择年级",
-        "all_grades": "所有年级", "refresh": "刷新", "register_name_label": "学生英文全名",
-        "register_grade_label": "当前年级",
+        "all_grades": "所有年级", "refresh": "刷新", "register_name_label": "学生英文全名", "reg_name_t":"请输入你的英文全名",
+        "register_grade_label": "当前年级", "reg_g_t":"你教的年级（以后可以改）","reg_c_t":"你教的学科（以后可以改）", "reg_desc":"简单介绍一下你自己或你的教学经历（以后可以改）",
         "register_raz_label": "RAZ 等级",  # <-- Added RAZ Label
         "register_country_label": "国家", "register_state_label": "州/省", "register_city_label": "城市",
         "select_country": "--- 选择国家 ---", "select_state": "--- 选择州/省 ---", "select_city": "--- 选择城市 ---",
@@ -343,8 +448,8 @@ days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturda
 allowed_zms=["Asia/Shanghai","America/Los_Angeles","America/Chicago",'America/New_York','Europe/Berlin',"Japan","America/Sao_Paulo",'America/Mexico_City',"Asia/Dhaka",]
 avtimezones=[x for x in list(available_timezones()) if x in allowed_zms]
 # --- Encryption & ID Generation ---
-if "secret_key" not in st.secrets: st.error("`secret_key` missing."); st.stop()
-SECRET_KEY = st.secrets["secret_key"]
+#if "secret_key" not in st.secrets: st.error("`secret_key` missing."); st.stop()
+SECRET_KEY = "11234"#st.secrets["secret_key"]
 
 
 def encrypt_id(plain_id: str) -> str: return hmac.new(SECRET_KEY.encode(), plain_id.encode(),
@@ -628,8 +733,34 @@ def admin_route():
     # ... (Password check, Refresh Button - unchanged) ...
     stsecrets="11234"
     #if "passcode" not in st.secrets: st.error("Admin `passcode` missing."); st.stop()
+    timezone_str=None
     admin_password = st.text_input(admin_lang["admin_password_prompt"], type="password", key="admin_pw")
-    if not admin_password: st.stop()
+
+    st.write("👇Login (might take a few seconds)")
+    location_data = streamlit_geolocation()  # Use a unique key
+
+    if location_data and 'latitude' in location_data and 'longitude' in location_data:
+        latitude = location_data.get('latitude')
+        longitude = location_data.get('longitude')
+
+        if latitude is not None and longitude is not None:
+
+            # Initialize TimezoneFinder
+            # This object can be computationally expensive to create,
+            # so for performance in a real app, you might consider caching it
+            # or creating it once at the start of the script if not using Streamlit's rerun magic.
+            # However, for this simple case, direct initialization is fine.
+            tf = TimezoneFinder()
+
+            # Get the timezone string
+            # Note: timezone_at() expects longitude first, then latitude
+            timezone_str = tf.timezone_at(lng=longitude, lat=latitude)
+
+            if timezone_str:
+                st.success(f"Estimated Timezone: {timezone_str}")
+                if "timezone_admin" not in st.session_state:
+                    st.session_state.timezone_admin = pytz.timezone(timezone_str)
+    if not timezone_str: st.stop()
     if admin_password != stsecrets: st.error("Incorrect password."); st.stop()
     st.success(admin_lang["admin_access_granted"])
     if st.button(admin_lang["refresh_data_button"]):
@@ -657,11 +788,13 @@ def admin_route():
         if "rating" not in details: details["rating"] = None; needs_saving_defaults = True
         if "allow_enroll" not in details: details["allow_enroll"] = True; needs_saving_defaults = True
         if "rated" not in details: details["rated"] = []; needs_saving_defaults = True
+        if "timezone" not in details: details["timezone"]="";
         print(details)
         teachers_list.append(
             {"Teacher ID": name, "Teacher Name": details["name"], "Subject (English)": details.get("subject_en", ""),
              "Description (English)": details.get("description_en", ""),
              "Description (Chinese)": details.get("description_zh", ""), "Grade": details.get("grade", ""),
+             "Timezone":details.get("timezone",""),
              "Is Active": details.get("is_active"), "Rating": details.get("rating"),
              "Allow Enroll": details.get("allow_enroll"),
              "Enrollment Cap": details.get("enrollment_cap") if details.get("enrollment_cap") is not None else 0})
@@ -671,7 +804,9 @@ def admin_route():
         teachers_database_global = temp_teachers_db_for_edit;
         st.info("Applied defaults to teachers. Data saved.")
     columns_teacher = ["Teacher ID", "Teacher Name", "Enrollment Cap", "Subject (English)", "Grade",
-                       "Description (English)", "Description (Chinese)", "Rating", "Allow Enroll", "Is Active"];
+                       "Description (English)", "Description (Chinese)", "Rating",
+                       "Timezone",
+                       "Allow Enroll", "Is Active"];
     teachers_df = pd.DataFrame(teachers_list, columns=columns_teacher) if teachers_list else pd.DataFrame(
         columns=columns_teacher)
     # Teacher editor UI
@@ -687,6 +822,7 @@ def admin_route():
                                                            admin_lang["admin_manage_teachers_desc_zh"]),
                                                        "Grade": st.column_config.TextColumn("Grade"),
                                                        "Rating": st.column_config.TextColumn("Class Rating"),
+                                                       "Timezone": st.column_config.TextColumn("Timezone"),
                                                        "Allow Enroll": st.column_config.CheckboxColumn("Allow Enroll?"),
                                                        "Is Active": st.column_config.CheckboxColumn("Active?"),
                                                        "Enrollment Cap": st.column_config.NumberColumn(
@@ -745,23 +881,24 @@ def admin_route():
                                                  "enrollment_cap": processed_cap, "rated": rtd}
         deleted_teacher_names = [n for n, d in original_teachers_data.items() if d.get("id") not in processed_ids]
         if not error_occurred:
-            try:
-                save_data(TEACHERS_DB_PATH, new_teachers_database);
-                teachers_database_global = new_teachers_database;
-                st.success("Teacher data updated!")
-                if deleted_teacher_names:
-                    enrollments_updated = False;
-                    current_enrollments = load_data(ENROLLMENTS_DB_PATH);
-                    new_enrollments_after_delete = current_enrollments.copy()
-                    for removed_name in deleted_teacher_names:
-                        if removed_name in new_enrollments_after_delete: del new_enrollments_after_delete[
-                            teachers_database_global.get(removed_name).get(
-                                "id")]; enrollments_updated = True; st.warning(f"Removed enrollments: {removed_name}")
-                    if enrollments_updated: save_data(ENROLLMENTS_DB_PATH,
-                                                      new_enrollments_after_delete); enrollments_global = new_enrollments_after_delete
-                st.rerun()
-            except Exception as e:
-                st.error(f"Failed to save teacher data: {e}")
+
+            save_data(TEACHERS_DB_PATH, new_teachers_database);
+            teachers_database_global = new_teachers_database;
+            st.success("Teacher data updated!")
+            if deleted_teacher_names:
+                enrollments_updated = False;
+                current_enrollments = load_data(ENROLLMENTS_DB_PATH);
+                new_enrollments_after_delete = current_enrollments.copy()
+                for removed_name in deleted_teacher_names:
+                    if removed_name in new_enrollments_after_delete:
+                        del new_enrollments_after_delete[removed_name]
+                        enrollments_updated = True
+                        st.warning(f"Removed enrollments: {removed_name}")
+                if enrollments_updated:
+                    save_data(ENROLLMENTS_DB_PATH,new_enrollments_after_delete)
+                    enrollments_global = new_enrollments_after_delete
+            st.rerun()
+
         else:
             st.warning("Fix errors before saving teacher changes.")
 
@@ -993,6 +1130,7 @@ def admin_route():
                 # enrmts[teacherr]=studentss["Encrypted ID"]
 
     with dele:
+        st.write("1. Select Students to Un-enroll")
         event = st.dataframe(
             assignments_df,
             column_config={  # Define headers, widths etc. Still useful for display formatting.
@@ -1027,6 +1165,7 @@ def admin_route():
     enrinfo1 = broadcasted_info.get("Close Enrollment", False)
     ratinfo = broadcasted_info.get("Open Ratings", False)
     ratinfo1 = broadcasted_info.get("Close Ratings", False)
+    dela= broadcasted_info.get("Open Enrollment Delay", False)
 
     def _():
         with st.form("Batch Action Form"):
@@ -1104,7 +1243,7 @@ def admin_route():
         #tmst = st.text_input("End Time (in Hours:Minutes)", key="edtrr", value="0:00")
 
         ddate_range_string = date_range_picker(picker_type=PickerType.time,
-                                              start=datetime.datetime.strptime(enrange,"%Y-%m-%d %H:%M"), end=datetime.datetime.strptime(enrange1,"%Y-%m-%d %H:%M"),
+                                              start=datetime.datetime.strptime(enrange,"%Y-%m-%d %H:%M").astimezone(st.session_state.timezone_admin), end=datetime.datetime.strptime(enrange1,"%Y-%m-%d %H:%M").astimezone(st.session_state.timezone_admin),
                                               key='time_range_picker')
         #print(date_range_string)
         if ddate_range_string:
@@ -1131,7 +1270,7 @@ def admin_route():
         #rted = st.text_input("Start Time (in Hours:Minutes)", key="sttrrat", value="0:00")
         #rtst = st.text_input("End Time (in Hours:Minutes)", key="edtrrat", value="0:00")
         date_range_string = date_range_picker(picker_type=PickerType.time,
-                                              start=datetime.datetime.strptime(ratrange,"%Y-%m-%d %H:%M"), end=datetime.datetime.strptime(ratrange1,"%Y-%m-%d %H:%M"),
+                                              start=datetime.datetime.strptime(ratrange,"%Y-%m-%d %H:%M").astimezone(st.session_state.timezone_admin), end=datetime.datetime.strptime(ratrange1,"%Y-%m-%d %H:%M").astimezone(st.session_state.timezone_admin),
                                               key='time_range_picker1')
         if date_range_string:
             ratd = [datetime.datetime.strptime(date_range_string[0], "%Y-%m-%d %H:%M:%S"),
@@ -1139,34 +1278,47 @@ def admin_route():
         print(ratd)
     st.write("Time Interval Between Ending Rating and Starting new Enrollment:")
     col1, col2, col3 = st.columns(3)
-
+    delt=False
+    if dela:
+        days,hours,minutes,seconds =  string_to_params(dela)
     with col1:
-        days = st.number_input("Days", min_value=0, step=1, value=3)
+        if dela:
+            days = st.number_input("Days", min_value=0, step=1, value=days)
+        else:
+            days = st.number_input("Days", min_value=0, step=1, value=3)
 
     with col2:
-        hours = st.number_input("Hours", min_value=0, max_value=23, step=1, value=12)
+        if dela:
+            hours = st.number_input("Hours", min_value=0, max_value=23, step=1, value=hours)
+        else:
+            hours = st.number_input("Hours", min_value=0, max_value=23, step=1, value=12)
+
 
     with col3:
-        minutes = st.number_input("Minutes", min_value=0, max_value=59, step=1, value=3)
+        if dela:
+            minutes = st.number_input("Minutes", min_value=0, max_value=59, step=1, value=minutes)
+        else:
+            minutes = st.number_input("Minutes", min_value=0, max_value=59, step=1, value=3)
 
     st.write(f"Current Schedule:")
     #st.info(f"Start Enrollment at {ddate_range_string[0]} and End Enrollment at {ddate_range_string[1]}.")
     #st.info(f"Then, after {(ratd[0]-enrd[1])}, Start Rating at {date_range_string[0]} and End Rating at {date_range_string[1]}.")
     time_delta = datetime.timedelta(days=days, hours=hours, minutes=minutes)
     assign_cols = ["Action", "Time"]
-    assignments_df = pd.DataFrame([{"Action":"Start Enrollment At", "Time":ddate_range_string[0]},{"Action":"End Enrollment At", "Time":ddate_range_string[1]},{"Action":"Wait For", "Time":(ratd[0]-enrd[1])},{"Action":"Start Rating At", "Time":date_range_string[0]},{"Action":"End Rating At", "Time":date_range_string[1]},{"Action":"Repeat Schedult After", "Time":str(time_delta)}],
-                                  columns=assign_cols) if assignments_list_enriched else pd.DataFrame(
-        columns=assign_cols)
-    st.dataframe(
-        assignments_df,
-        column_config={  # Define headers, widths etc. Still useful for display formatting.
-            "Action": st.column_config.TextColumn(width="medium"),
-            "Time": st.column_config.TextColumn(width="medium"),
+    if ddate_range_string:
+        assignments_df = pd.DataFrame([{"Action":"Start Enrollment At", "Time":ddate_range_string[0]},{"Action":"End Enrollment At", "Time":ddate_range_string[1]},{"Action":"Wait For", "Time":str(ratd[0]-enrd[1])},{"Action":"Start Rating At", "Time":date_range_string[0]},{"Action":"End Rating At", "Time":date_range_string[1]},{"Action":"Repeat Schedult After", "Time":str(time_delta)}],
+                                      columns=assign_cols) if assignments_list_enriched else pd.DataFrame(
+            columns=assign_cols)
+        st.dataframe(
+            assignments_df,
+            column_config={  # Define headers, widths etc. Still useful for display formatting.
+                "Action": st.column_config.TextColumn(width="medium"),
+                "Time": st.column_config.TextColumn(width="medium"),
 
-        },
-        use_container_width=True,
-        hide_index=True,
-    )
+            },
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
     save_sched = st.button("Save Schedule", key="save_sc")
@@ -1326,13 +1478,95 @@ def find_user_file(user_id):
     file_path = os.path.join(user_specific_dir, filename)
 
     return file_path, filename, None
+def teacher_register():
+    lang=texts["English"]
+    registration_successful = st.session_state.get("teacher_registration_done", False)  # Flag
+    #print(registration_successful)
+    if not registration_successful:  # Only show registration form if not yet done
+        st.write(lang["teach_reg_p"])
+        new_teach_name = st.text_input(lang["reg_name_t"], key="teach_name")
+        new_teach_grade = st.text_input(lang["reg_g_t"], key="teach_grade")
+        new_teach_course = st.text_input(lang["reg_c_t"], key="teach_course")
+        new_teach_desc = st.text_area(lang["reg_desc"], key="teach_desc")
+        st.write(lang["autcompl"])
+
+        location_data = streamlit_geolocation()  # Use a unique key
+
+        if location_data and 'latitude' in location_data and 'longitude' in location_data:
+            latitude = location_data.get('latitude')
+            longitude = location_data.get('longitude')
+
+            if latitude is not None and longitude is not None:
+
+                # Initialize TimezoneFinder
+                # This object can be computationally expensive to create,
+                # so for performance in a real app, you might consider caching it
+                # or creating it once at the start of the script if not using Streamlit's rerun magic.
+                # However, for this simple case, direct initialization is fine.
+                tf = TimezoneFinder()
+
+                # Get the timezone string
+                # Note: timezone_at() expects longitude first, then latitude
+                timezone_str = tf.timezone_at(lng=longitude, lat=latitude)
+
+                if timezone_str:
+                    if "timezone_teach" not in st.session_state:
+                        st.session_state.timezone_teach = pytz.timezone(timezone_str)
+                    timzs = [None,timezone_str] + avtimezones
+                    selected_zone = st.selectbox(lang["selectzone"], options=timzs, key="timezone12",index=1)
+
+            else:
+                selected_zone = st.selectbox(lang["selectzone"], options=[None] + avtimezones, key="timezonet12")
+        st.markdown("---")
+        params = st.query_params
+        current_eid_from_new_api = params.get("eid", [None])[0]
+        #st.write(f"Using `st.query_params`: Current `eid` = `{current_eid_from_new_api}`")
+        #st.write(f"All params (new API): `{params.to_dict()}`")
+        if st.button(lang["register_button"], key="register_btnt"):
+            teach_datab=load_data(TEACHERS_DB_PATH)
+            if new_teach_name.strip() and new_teach_grade and new_teach_course:
+                teach_data_to_save = {"name": new_teach_name,
+                                        "subject_en": new_teach_course,
+                                        "grade": new_teach_grade,
+                                        "description_en": new_teach_desc,
+                                        "description_zh": "",
+                                        "is_active": True,
+                                        "allow_enroll": True,
+                                        "enrollment_cap": None,
+                                        "rated": {},
+                                        "rating": None,
+                                        "timezone": selected_zone}
+                ntid=generate_teacher_id()
+                teach_datab[ntid] = teach_data_to_save
+                save_data(TEACHERS_DB_PATH, teach_datab)
+                st.session_state.teacher_registration_done = True
+                st.session_state.new_teacher_id = ntid  # Store ntid if needed later
+                st.rerun()  # Rerun to reflect success and show next step
+                #st.success(lang["registered_success"].format(name=new_teach_name.strip()))
+                #st.balloons()
+    else:
+        st.success(lang["registered_success"].format(name="New Teacher"))  # Or use saved name
+        st.info("Your ID (copy and keep it somewhere safe...): ")
+        st.code(st.session_state.get("new_teacher_id", "Error retrieving ID"))
+
+        st.markdown("---")
+
+        if st.button("Go to Teacher Login", key="go_to_teacher_login_after_reg"):
+            st.query_params.eid = "teacher"
+            st.rerun()
+
+    #st.stop()
 # --- Main Application Logic ---
 params = st.query_params
 plain_id = params.get("eid", "");
 plain_id = plain_id[0] if isinstance(plain_id, list) else plain_id
 if not plain_id: st.error("No user id provided (?eid=...)"); st.stop()
-request_id = plain_id.lower()
+if "request_id" not in st.session_state:
+    st.session_state.request_id = plain_id.lower()
+elif st.session_state.request_id != plain_id:
+    st.session_state.request_id = plain_id.lower()
 
+request_id=st.session_state.request_id
 # --- Routing ---
 if request_id == "admin":
     _ = admin_route()  # Assign return value to _ to potentially suppress output
@@ -1342,9 +1576,9 @@ elif request_id == "teacher":
         _ = teacher_dashboard()  # Assign return value to _
     else:
         _ = teacher_login_page()  # Assign return value to _
+elif request_id == "teach_reg":
+    teacher_register()
 
-# --- STUDENT/USER PATH (Using secure_id for Enrollment) ---
-# --- STUDENT/USER PATH (Using secure_id for Enrollment) ---
 else:
 
     selected_language = st.sidebar.selectbox(
@@ -1371,23 +1605,96 @@ else:
         new_user_name = st.text_input(lang["register_name_label"], key="reg_name")
         new_user_grade = st.text_input(lang["register_grade_label"], key="reg_grade")
         new_user_raz = st.text_input(lang["register_raz_label"], key="reg_raz")
-        country_options = [lang["select_country"]] + sorted(location_data.keys());
-        selected_country = st.selectbox(lang["register_country_label"], options=country_options, key="reg_country",
-                                        index=0)
-        state_options = [lang["select_state"]];
-        if selected_country != lang["select_country"] and selected_country in location_data: state_options.extend(
-            sorted(location_data[selected_country].keys()))
-        selected_state = st.selectbox(lang["register_state_label"], options=state_options, key="reg_state", index=0,
-                                      disabled=(selected_country == lang["select_country"]),)
-        city_options = [lang["select_city"]];
-        if selected_state != lang["select_state"] and selected_country in location_data and selected_state in \
-                location_data[selected_country]: city_options.extend(
-            sorted(location_data[selected_country][selected_state]))
-        selected_city = st.selectbox(lang["register_city_label"], options=city_options, key="reg_city", index=0,
-                                     disabled=(selected_state == lang["select_state"]))
-        selected_zone = st.selectbox(lang["selectzone"], options=[None] + avtimezones, key="timezone")
+        st.write(lang["autcompl"])
+
+        location_dat = streamlit_geolocation()  # Use a unique key
+        if location_dat and 'latitude' in location_dat and 'longitude' in location_dat:
+            latitude = location_dat.get('latitude')
+            longitude = location_dat.get('longitude')
+
+            if latitude is not None and longitude is not None:
+
+                # --- Timezone ---
+                tf = TimezoneFinder()
+                timezone_str = tf.timezone_at(lng=longitude, lat=latitude)
+                if timezone_str:
+                    try:
+                        user_timezone = pytz.timezone(timezone_str)
+                        time_in_timezone = datetime.datetime.now(user_timezone)
+                    except Exception as e:
+                        st.error(f"Error getting current time for timezone: {e}")
+                else:
+                    st.warning("Could not determine the timezone for the given coordinates.")
+
+                try:
+                    results = rg.search((latitude, longitude))  # Returns a list of ordered dicts
+                    if results:
+
+                        location_info = results[0]
+                        city = location_info.get('name')
+                        country_code = location_info.get('cc')
+                        state_province = location_info.get('admin1')  # e.g., State in US, Province in Canada
+
+                        country_name = "Unknown"
+                        if country_code:
+                            try:
+                                country_obj = pycountry.countries.get(alpha_2=country_code)
+                                if country_obj:
+                                    country_name = country_obj.name
+                            except Exception as e:
+                                st.warning(f"Could not convert country code '{country_code}' to name: {e}")
+
+                        country_options = [lang["select_country"],country_name] + sorted(location_data.keys());
+                        selected_country = st.selectbox(lang["register_country_label"], options=country_options,
+                                                        key="reg_country",
+                                                        index=1)
+                        state_options = [lang["select_state"],state_province];
+                        if selected_country != lang[
+                            "select_country"] and selected_country in location_data: state_options.extend(
+                            sorted(location_data[selected_country].keys()))
+                        selected_state = st.selectbox(lang["register_state_label"], options=state_options,
+                                                      key="reg_state", index=1,
+                                                      disabled=(selected_country == lang["select_country"]), )
+                        city_options = [lang["select_city"], city];
+                        if selected_state != lang[
+                            "select_state"] and selected_country in location_data and selected_state in \
+                                location_data[selected_country]: city_options.extend(
+                            sorted(location_data[selected_country][selected_state]))
+                        selected_city = st.selectbox(lang["register_city_label"], options=city_options, key="reg_city",
+                                                     index=1,
+                                                     disabled=(selected_state == lang["select_state"]))
+                        print(timezone_str)
+                        timzs=[None,timezone_str] + avtimezones
+                        print(timzs)
+                        selected_zone = st.selectbox(lang["selectzone"], options=timzs, key="timezonet",index=1)
+
+
+                    else:
+                        st.warning("Could not find location details using reverse_geocoder.")
+                except Exception as e:
+                    st.error(f"Error during reverse geocoding with reverse_geocoder: {e}")
+
+            else:
+
+                country_options = [lang["select_country"]] + sorted(location_data.keys());
+                selected_country = st.selectbox(lang["register_country_label"], options=country_options, key="reg_country",
+                                                index=0)
+                state_options = [lang["select_state"]];
+                if selected_country != lang["select_country"] and selected_country in location_data: state_options.extend(
+                    sorted(location_data[selected_country].keys()))
+                selected_state = st.selectbox(lang["register_state_label"], options=state_options, key="reg_state", index=0,
+                                              disabled=(selected_country == lang["select_country"]),)
+                city_options = [lang["select_city"]];
+                if selected_state != lang["select_state"] and selected_country in location_data and selected_state in \
+                        location_data[selected_country]: city_options.extend(
+                    sorted(location_data[selected_country][selected_state]))
+                selected_city = st.selectbox(lang["register_city_label"], options=city_options, key="reg_city", index=0,
+                                             disabled=(selected_state == lang["select_state"]))
+                selected_zone = st.selectbox(lang["selectzone"], options=[None] + avtimezones, key="timezone")
         st.markdown("---")
         if st.button(lang["register_button"], key="register_btn"):
+            print(selected_zone, selected_country, selected_state, selected_city)
+
             if new_user_name.strip() and new_user_raz and selected_zone and selected_country != lang[
                 "select_country"] and selected_state != lang["select_state"] and selected_city != lang["select_city"]:
                 user_data_to_save = {"name": new_user_name.strip(), "grade": new_user_grade.strip(),
@@ -1408,7 +1715,10 @@ else:
     enrinfo1 = broadcasted_info.get("Close Enrollment", False)
     ratinfo = broadcasted_info.get("Open Ratings", False)
     ratinfo1 = broadcasted_info.get("Close Ratings", False)
-    usrcnt = user_database[secure_id]["timezone"]
+    if user_database.get(secure_id):
+        usrcnt = user_database[secure_id]["timezone"]
+    else:
+        usrcnt= "UTC"
     enrange = broadcasted_info.get("Open Enrollment Date")
     enrange1 = broadcasted_info.get("Close Enrollment Date")
     ratrange = broadcasted_info.get("Open Ratings Date")
