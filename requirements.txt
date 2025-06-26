@@ -1,3 +1,4 @@
+
 streamlit
 pandas
 googletrans==4.0.0-rc1
@@ -5,3 +6,4 @@ st-star-rating
 streamlit-date-picker
 streamlit-autorefresh
 streamlit_geolocation
+timezonefinder
