@@ -731,8 +731,8 @@ def admin_route():
 
     st.title(admin_lang["admin_dashboard_title"])
     # ... (Password check, Refresh Button - unchanged) ...
-    stsecrets="11234"
-    #if "passcode" not in st.secrets: st.error("Admin `passcode` missing."); st.stop()
+    
+    if "passcode" not in st.secrets: st.error("Admin `passcode` missing."); st.stop()
     timezone_str=None
     admin_password = st.text_input(admin_lang["admin_password_prompt"], type="password", key="admin_pw")
 
@@ -761,7 +761,7 @@ def admin_route():
                 if "timezone_admin" not in st.session_state:
                     st.session_state.timezone_admin = pytz.timezone(timezone_str)
     if not timezone_str: st.stop()
-    if admin_password != stsecrets: st.error("Incorrect password."); st.stop()
+    if admin_password != st.secrets["passcode"]: st.error("Incorrect password."); st.stop()
     st.success(admin_lang["admin_access_granted"])
     if st.button(admin_lang["refresh_data_button"]):
         user_database_global = load_data(USER_DB_PATH);
