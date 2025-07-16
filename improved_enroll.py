@@ -723,6 +723,9 @@ def find_key_by_value(nested_dict, target_value):
             return key
     return None
 
+def temp_student_route():
+    st.query_params.eid = generate_teacher_id()
+    st.rerun()
 
 # --- Admin Route (Updated for Teacher Description) ---
 def admin_route():
@@ -1578,7 +1581,8 @@ elif request_id == "teacher":
         _ = teacher_login_page()  # Assign return value to _
 elif request_id == "teach_reg":
     teacher_register()
-
+elif request_id == "student_reg":
+    temp_student_route()
 else:
 
     selected_language = st.sidebar.selectbox(
