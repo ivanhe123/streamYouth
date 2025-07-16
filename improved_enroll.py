@@ -1579,7 +1579,7 @@ elif request_id == "teacher":
 elif request_id == "teach_reg":
     teacher_register()
 
-else:
+elif:
 
     selected_language = st.sidebar.selectbox(
         texts["English"]["language_label"] + " / " + texts["中文"]["language_label"], options=["English", "中文"],
