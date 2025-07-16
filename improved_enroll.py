@@ -449,7 +449,7 @@ allowed_zms=["Asia/Shanghai","America/Los_Angeles","America/Chicago",'America/Ne
 avtimezones=[x for x in list(available_timezones()) if x in allowed_zms]
 # --- Encryption & ID Generation ---
 #if "secret_key" not in st.secrets: st.error("`secret_key` missing."); st.stop()
-SECRET_KEY = "11234"#st.secrets["secret_key"]
+SECRET_KEY = st.secrets["secret_key"]
 
 
 def encrypt_id(plain_id: str) -> str: return hmac.new(SECRET_KEY.encode(), plain_id.encode(),
