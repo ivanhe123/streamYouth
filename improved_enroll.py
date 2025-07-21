@@ -35,6 +35,9 @@ cookies = EncryptedCookieManager(
     # You should really setup a long COOKIES_PASSWORD secret if you're running on Streamlit Cloud.
     password=os.environ.get("COOKIES_PASSWORD", "My secret password"),
 )
+if not cookies.ready():
+    # Wait for the component to load and send us current cookies.
+    st.stop()
 # --- Translation Setup (ONLY for dynamic content) ---
 translator=None
 AUTOPLAY_DELAY_SECONDS = 7
