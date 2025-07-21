@@ -752,7 +752,8 @@ def admin_route():
     
     if "passcode" not in st.secrets: st.error("Admin `passcode` missing."); st.stop()
     timezone_str=None
-    admin_password = st.text_input(admin_lang["admin_password_prompt"], type="password", key="admin_pw")
+    if "admin_psc" in cookies:
+        admin_password = st.text_input(admin_lang["admin_password_prompt"], type="password", key="admin_pw",value=cookies["admin_psc"])
 
     st.write("👇Login (might take a few seconds)")
     location_data = streamlit_geolocation()  # Use a unique key
@@ -1456,7 +1457,7 @@ def teacher_login_page():
     # Use hardcoded English for this page for now
     st.title("Teacher Portal Login")
     if "teach_code" in cookies:
-        entered_id = st.text_input("Enter your Teacher ID:", type="password", key="teacher_id_input", autocomplete= cookies["teach_code"])
+        entered_id = st.text_input("Enter your Teacher ID:", type="password", key="teacher_id_input", value= cookies["teach_code"])
     else:
         entered_id = st.text_input("Enter your Teacher ID:", type="password", key="teacher_id_input")
 
