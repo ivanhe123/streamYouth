@@ -754,6 +754,8 @@ def admin_route():
     timezone_str=None
     if "admin_psc" in cookies:
         admin_password = st.text_input(admin_lang["admin_password_prompt"], type="password", key="admin_pw",value=cookies["admin_psc"])
+    else:
+         admin_password = st.text_input(admin_lang["admin_password_prompt"], type="password", key="admin_pw")
 
     st.write("👇Login (might take a few seconds)")
     location_data = streamlit_geolocation()  # Use a unique key
@@ -780,13 +782,6 @@ def admin_route():
                 if "timezone_admin" not in st.session_state:
                     st.session_state.timezone_admin = pytz.timezone(timezone_str)
                 cookies['admin_tmz'] = timezone_str
-                
-    if "admin_psc" in cookies and "admin_tmz" in cookies:
-        if st.button("Auto-login with Cookies"):
-            timezone_str=cookies["admin_tmz"]
-            if "timezone_admin" not in st.session_state:
-                st.session_state.timezone_admin = pytz.timezone(timezone_str)
-            admin_password = cookies["admin_psc"]
     if not timezone_str: 
         st.stop()
     if admin_password != st.secrets["passcode"]: 
