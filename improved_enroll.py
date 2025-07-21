@@ -25,7 +25,16 @@ from datetime import timedelta
 import time
 from streamlit_geolocation import streamlit_geolocation
 from streamlit_star_rating import st_star_rating
+from streamlit_cookies_manager import EncryptedCookieManager
 
+# This should be on top of your script
+cookies = EncryptedCookieManager(
+    # This prefix will get added to all your cookie names.
+    # This way you can run your app on Streamlit Cloud without cookie name clashes with other apps.
+    prefix="ktosiek/streamlit-cookies-manager/",
+    # You should really setup a long COOKIES_PASSWORD secret if you're running on Streamlit Cloud.
+    password=os.environ.get("COOKIES_PASSWORD", "My secret password"),
+)
 # --- Translation Setup (ONLY for dynamic content) ---
 translator=None
 AUTOPLAY_DELAY_SECONDS = 7
@@ -724,7 +733,10 @@ def find_key_by_value(nested_dict, target_value):
     return None
 
 def temp_student_route():
-    st.query_params.eid = generate_teacher_id()
+    if "stud_code" in cookies:
+        st.query_params.eid = cookies["stud_code"]
+    else:
+        st.query_params.eid = generate_teacher_id()
     st.rerun()
 
 # --- Admin Route (Updated for Teacher Description) ---
@@ -763,8 +775,26 @@ def admin_route():
                 st.success(f"Estimated Timezone: {timezone_str}")
                 if "timezone_admin" not in st.session_state:
                     st.session_state.timezone_admin = pytz.timezone(timezone_str)
-    if not timezone_str: st.stop()
-    if admin_password != st.secrets["passcode"]: st.error("Incorrect password."); st.stop()
+                cookies['admin_tmz'] = timezone_str
+                cookies.save()
+    if "admin_psc" in cookies and "admin_tmz" in cookies:
+        if st.button("Auto-login with Cookies"):
+            timezone_str=cookies["admin_tmz"]
+            if "timezone_admin" not in st.session_state:
+                st.session_state.timezone_admin = pytz.timezone(timezone_str)
+            admin_password = cookies["admin_psc"]
+    if not timezone_str: 
+        st.stop()
+    if admin_password != st.secrets["passcode"]: 
+        if "admin_psc" in cookies:
+            cookies.pop('admin_tmz')
+            cookies.pop("admin_psc")
+            cookies.save()
+            st.rerun()
+        st.error("Incorrect password.")
+        st.stop()
+    cookies["admin_psc"] = admin_password
+    cookies.save()
     st.success(admin_lang["admin_access_granted"])
     if st.button(admin_lang["refresh_data_button"]):
         user_database_global = load_data(USER_DB_PATH);
@@ -1424,7 +1454,11 @@ def teacher_login_page():
 
     # Use hardcoded English for this page for now
     st.title("Teacher Portal Login")
-    entered_id = st.text_input("Enter your Teacher ID:", type="password", key="teacher_id_input")
+    if "teach_code" in cookies:
+        entered_id = st.text_input("Enter your Teacher ID:", type="password", key="teacher_id_input", autocomplete= cookies["teach_code"])
+    else:
+        entered_id = st.text_input("Enter your Teacher ID:", type="password", key="teacher_id_input")
+
     if st.button("Login", key="teacher_login_submit"):
         if not entered_id:
             st.warning("Please enter ID.")
@@ -1439,6 +1473,8 @@ def teacher_login_page():
                 st.session_state.teacher_id = entered_id
                 st.session_state.teacher_name = teacher_name
                 st.success(f"Welcome, {teacher_name}!")
+                cookies["teach_code"]=entered_id
+                cookies.save()
                 # Rerun will now hit the routing logic which will call teacher_dashboard directly
                 st.rerun()
             else:
@@ -1544,6 +1580,8 @@ def teacher_register():
                 save_data(TEACHERS_DB_PATH, teach_datab)
                 st.session_state.teacher_registration_done = True
                 st.session_state.new_teacher_id = ntid  # Store ntid if needed later
+                cookies["teach_code"]=ntid
+                cookies.save()
                 st.rerun()  # Rerun to reflect success and show next step
                 #st.success(lang["registered_success"].format(name=new_teach_name.strip()))
                 #st.balloons()
@@ -1551,7 +1589,7 @@ def teacher_register():
         st.success(lang["registered_success"].format(name="New Teacher"))  # Or use saved name
         st.info("Your ID (copy and keep it somewhere safe...): ")
         st.code(st.session_state.get("new_teacher_id", "Error retrieving ID"))
-
+        
         st.markdown("---")
 
         if st.button("Go to Teacher Login", key="go_to_teacher_login_after_reg"):
@@ -1581,7 +1619,7 @@ elif request_id == "teacher":
         _ = teacher_login_page()  # Assign return value to _
 elif request_id == "teach_reg":
     teacher_register()
-elif request_id == "student_reg":
+elif request_id == "students":
     temp_student_route()
 else:
 
@@ -1707,6 +1745,8 @@ else:
                 user_database[secure_id] = user_data_to_save
                 save_data(USER_DB_PATH, user_database);
                 user_database_global = user_database
+                cookies["stud_code"]=secure_id
+                cookies.save()
                 st.success(lang["registered_success"].format(name=new_user_name.strip()));
                 st.balloons();
                 time.sleep(1);
