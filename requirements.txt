@@ -9,3 +9,4 @@ streamlit_geolocation
 timezonefinder
 reverse_geocoder
 pycountry
+streamlit_cookies_manager
