@@ -779,7 +779,7 @@ def admin_route():
                 if "timezone_admin" not in st.session_state:
                     st.session_state.timezone_admin = pytz.timezone(timezone_str)
                 cookies['admin_tmz'] = timezone_str
-                cookies.save()
+                cookies.save(key='save_timezone')
     if "admin_psc" in cookies and "admin_tmz" in cookies:
         if st.button("Auto-login with Cookies"):
             timezone_str=cookies["admin_tmz"]
@@ -792,12 +792,12 @@ def admin_route():
         if "admin_psc" in cookies:
             cookies.pop('admin_tmz')
             cookies.pop("admin_psc")
-            cookies.save()
+            cookies.save(key='save_password_tmz')
             st.rerun()
         st.error("Incorrect password.")
         st.stop()
     cookies["admin_psc"] = admin_password
-    cookies.save()
+    cookies.save(key='save_password')
     st.success(admin_lang["admin_access_granted"])
     if st.button(admin_lang["refresh_data_button"]):
         user_database_global = load_data(USER_DB_PATH);
@@ -1477,7 +1477,7 @@ def teacher_login_page():
                 st.session_state.teacher_name = teacher_name
                 st.success(f"Welcome, {teacher_name}!")
                 cookies["teach_code"]=entered_id
-                cookies.save()
+                cookies.save(key='save_teach_psd')
                 # Rerun will now hit the routing logic which will call teacher_dashboard directly
                 st.rerun()
             else:
@@ -1584,7 +1584,7 @@ def teacher_register():
                 st.session_state.teacher_registration_done = True
                 st.session_state.new_teacher_id = ntid  # Store ntid if needed later
                 cookies["teach_code"]=ntid
-                cookies.save()
+                cookies.save(key='save_teach_id')
                 st.rerun()  # Rerun to reflect success and show next step
                 #st.success(lang["registered_success"].format(name=new_teach_name.strip()))
                 #st.balloons()
@@ -1749,7 +1749,7 @@ else:
                 save_data(USER_DB_PATH, user_database);
                 user_database_global = user_database
                 cookies["stud_code"]=secure_id
-                cookies.save()
+                cookies.save(key='save_stud_id')
                 st.success(lang["registered_success"].format(name=new_user_name.strip()));
                 st.balloons();
                 time.sleep(1);
